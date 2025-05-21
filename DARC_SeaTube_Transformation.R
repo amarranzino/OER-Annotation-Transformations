@@ -31,7 +31,8 @@ emails <- data.frame (name = c("Putts, Meagan", "hcarlson", "Bingo, Sarah", "Cun
 #Create a column that has dive number 
 #This is different for Okeanos vs Nautilus dives
 
-annotation_clean <- as.data.frame(annotation_import) |>
+annotation_clean <- as.data.frame(annotation_import) 
+annotation_clean <- annotation_clean|>
   mutate(DiveNumber = case_when(Vessel == "Okeanos Explorer" ~ str_sub(Station,-2,-1)),
                       case_when(Vessel == "Nautilus" ~ str_sub(Station,-3,-1)))|> 
   mutate(Annotation_timestamp = with(annotation_clean, ymd(ObservationDate) +hms(ObservationTime))|>
@@ -39,7 +40,7 @@ annotation_clean <- as.data.frame(annotation_import) |>
   mutate(`Creation timestamp` = NA, `To Be Reviewed` = TRUE, Taxonomy = NA, `Parent taxon` = NA)|> 
   left_join(emails, join_by(IdentifiedBy == name)) |> 
   mutate(across(where(is.numeric),~na_if(., -999))) |> 
-  mutate(`Parent taxon` = if_else(!is.na(Subspecies), Species, NA),
+  mutate(`Parent taxon` = if_else(!is.na (Class), Phylum, NA))(!is.na(Subspecies), Species, NA),
          `Parent taxon` = if_else(!is.na(Species), Genus, NA),
          `Parent taxon` = if_else(!is.na (Genus), Subfamily, NA),
          `Parent taxon` = if_else(!is.na (Subfamily), Family, NA), 
@@ -47,7 +48,7 @@ annotation_clean <- as.data.frame(annotation_import) |>
          `Parent taxon` = if_else(!is.na (Suborder), Order, NA), 
          `Parent taxon` = if_else(!is.na (Order), Subclass, NA),
          `Parent taxon` = if_else(!is.na (Subclass), Class, NA),
-         `Parent taxon` = if_else(!is.na (Class), Phylum, NA)) |> 
+         `Parent taxon` = if_else |> 
    mutate(Comments = case_when(!is.na (IdentificationComments) & !is.na(OccurrenceComments) ~ paste0(IdentificationComments, OccurrenceComments, sep = "; "),
                               !is.na (IdentificationComments) & is.na(OccurrenceComments) ~ IdentificationComments,
                               is.na(IdentificationComments) & !is.na (OccurrenceComments) ~ OccurrenceComments))|>
