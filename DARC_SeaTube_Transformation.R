@@ -43,7 +43,7 @@ annotation_clean <- annotation_import|>
                                        Vessel == "Nautilus" ~ str_sub(Station,-3,-1)))|> 
   mutate(Annotation_timestamp = with(annotation_clean, ymd(ObservationDate) +hms(ObservationTime)))|>
   mutate(as.POSIXlt(Annotation_timestamp, tz = "UTC",format= " %Y-%m-%d %H:%M:%OS")) |> 
-  mutate(`Creation timestamp` = NA, `To Be Reviewed` = TRUE, Taxonomy = NA)|> 
+  mutate(`To Be Reviewed` = TRUE, Taxonomy = NA)|> 
   left_join(emails, join_by(IdentifiedBy == name)) |>  #add emails for annotators based on referencing the email dataframe
   mutate(across(where(is.numeric),~na_if(., -999))) |>  #removes the -999 present for no data in numeric columns
   mutate(Comments = case_when(!is.na (IdentificationComments) & !is.na(OccurrenceComments) ~ paste0(IdentificationComments, OccurrenceComments, sep = "; "),
@@ -98,15 +98,15 @@ df <- df |>
 
 annotation_classification<-annotation_clean |> 
   left_join(df, join_by(AphiaID == AphiaID))|>  
-  select(c(DiveNumber, Annotation_timestamp, email, `Creation timestamp`, `To Be Reviewed`, Taxonomy, ParentTaxon, Comments,ScientificName, CMECSGeoForm, 
+  select(c(DiveNumber, Annotation_timestamp, email, `To Be Reviewed`, Taxonomy, ParentTaxon, Comments,ScientificName, CMECSGeoForm, 
            Substrate, Habitat, Morphospecies, IdentificationQualifier, IndividualCount, CategoricalAbundance, VerbatimSize, 
-           MinimumSize, MaximumSize, Condition, AssociatedTaxa, LocationAccuracy, RecordType))|>
+           MinimumSize, MaximumSize, Condition, AssociatedTaxa, LocationAccuracy, RecordType, Modified))|>
   rename(`Annotation timestamp` = Annotation_timestamp, `Creator email` = email, Geoform = CMECSGeoForm, Taxon = ScientificName, , `NOAA Biology/Morphospecies` = Morphospecies, 
          `NOAA Biology/Identification Qualifier` = IdentificationQualifier, `NOAA Biology/Individual Count` = IndividualCount, `Parent Taxon` = ParentTaxon,
          `NOAA Biology/Categorical_Abundace` = CategoricalAbundance, `NOAA Biology/Verbatim Size` = VerbatimSize, `NOAA Biology/Minimum Size` = MinimumSize,
          `NOAA Biology/Maximum Size` = MaximumSize, `NOAA Biology/Condition` = Condition, `NOAA Biology/Associated Taxa` = AssociatedTaxa, 
-         `NOAA Biology/Location Accuracy` = LocationAccuracy, `NOAA Biology/Record Type` = RecordType) |> 
-  relocate(Comments, .before = `To Be Reviewed`)
+         `NOAA Biology/Location Accuracy` = LocationAccuracy, `NOAA Biology/Record Type` = RecordType, `Creation timestamp` = Modified) |> 
+  relocate(c('Creation timestamp', Comments), .before = `To Be Reviewed`)
 
 
 
@@ -138,7 +138,7 @@ dir.create(paste0(wd,"/Exports/"))
 #create a new dataframe for each dive and export as a .csv
 for (i in 1:n_distinct(annotation_full$DiveNumber)){
   dat <- annotation_full |>  
-    filter(DiveNumber == unique(annotation_full$DiveNumber[i])) |> 
+    filter(DiveNumber == unique (annotation_full$DiveNumber)[i])|>
     select(-DiveNumber)
   
   filename = paste0(data_name,"_DIVE",unique(annotation_full$DiveNumber)[i],".csv")
