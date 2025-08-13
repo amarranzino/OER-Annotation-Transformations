@@ -38,17 +38,18 @@ emails <- data.frame (name = c("Putts, Meagan", "hcarlson", "Bingo, Sarah", "Cun
 #Create a column that has dive number 
 #This is different for Okeanos vs Nautilus dives
 
-annotation_clean <- annotation_import|>
+annotation_clean <- annotation_import |>   
   mutate(DiveNumber = case_when(Vessel == "Okeanos Explorer" ~ str_sub(Station,-2,-1),
                                        Vessel == "Nautilus" ~ str_sub(Station,-3,-1)))|> 
-  mutate(Annotation_timestamp = with(annotation_clean, ymd(ObservationDate) +hms(ObservationTime)))|>
-  mutate(as.POSIXlt(Annotation_timestamp, tz = "UTC",format= " %Y-%m-%d %H:%M:%OS")) |> 
+  mutate(Annotation_timestamp = ymd(ObservationDate) +hms(ObservationTime))|>
+  mutate(Annotation_timestamp = as.POSIXlt(Annotation_timestamp, tz = "UTC",format= " %Y-%m-%d %H:%M:%OS")) |> 
   mutate(`To Be Reviewed` = TRUE, Taxonomy = NA)|> 
   left_join(emails, join_by(IdentifiedBy == name)) |>  #add emails for annotators based on referencing the email dataframe
   mutate(across(where(is.numeric),~na_if(., -999))) |>  #removes the -999 present for no data in numeric columns
   mutate(Comments = case_when(!is.na (IdentificationComments) & !is.na(OccurrenceComments) ~ paste0(IdentificationComments, OccurrenceComments, sep = "; "),
                               !is.na (IdentificationComments) & is.na(OccurrenceComments) ~ IdentificationComments,
-                              is.na(IdentificationComments) & !is.na (OccurrenceComments) ~ OccurrenceComments))
+                              is.na(IdentificationComments) & !is.na (OccurrenceComments) ~ OccurrenceComments)) |> 
+  mutate (ScientificName = str_remove(ScientificName, "sp."))
 
 
 
@@ -94,7 +95,7 @@ for (i in 1:length(Aphia$AphiaID)){
 df <- df |> 
   distinct(AphiaID, .keep_all = T)
 
-#Add the full taxonomic classification system in df to annotation_clean and remove unneccesary columns
+#Add the full taxonomic classification system in df to annotation_clean and remove unnecessary columns
 
 annotation_classification<-annotation_clean |> 
   left_join(df, join_by(AphiaID == AphiaID))|>  
@@ -103,7 +104,7 @@ annotation_classification<-annotation_clean |>
            MinimumSize, MaximumSize, Condition, AssociatedTaxa, LocationAccuracy, RecordType, Modified))|>
   rename(`Annotation timestamp` = Annotation_timestamp, `Creator email` = email, Geoform = CMECSGeoForm, Taxon = ScientificName, , `NOAA Biology/Morphospecies` = Morphospecies, 
          `NOAA Biology/Identification Qualifier` = IdentificationQualifier, `NOAA Biology/Individual Count` = IndividualCount, `Parent Taxon` = ParentTaxon,
-         `NOAA Biology/Categorical_Abundace` = CategoricalAbundance, `NOAA Biology/Verbatim Size` = VerbatimSize, `NOAA Biology/Minimum Size` = MinimumSize,
+         `NOAA Biology/Categorical Abundance` = CategoricalAbundance, `NOAA Biology/Verbatim Size` = VerbatimSize, `NOAA Biology/Minimum Size` = MinimumSize,
          `NOAA Biology/Maximum Size` = MaximumSize, `NOAA Biology/Condition` = Condition, `NOAA Biology/Associated Taxa` = AssociatedTaxa, 
          `NOAA Biology/Location Accuracy` = LocationAccuracy, `NOAA Biology/Record Type` = RecordType, `Creation timestamp` = Modified) |> 
   relocate(c('Creation timestamp', Comments), .before = `To Be Reviewed`)
@@ -129,8 +130,15 @@ annotation_event <- annotation_classification |>
 annotation_full <- rbind(annotation_bio, annotation_geo, annotation_event) |> 
   mutate(across(starts_with("NOAA"), as.character))
 
+
+#As of 4 August 2025 - SeaTube is only updating Biological observations. For the time being, skip creation and merger of the geo and event dataframes and just write the bio dataframe to annotation_full
+annotation_full <- annotation_bio
+
 #Remove all "NA"s from dataframe
 annotation_full[is.na(annotation_full)] <- ""
+
+
+
 
 #Create a directory to store exports in
 dir.create(paste0(wd,"/Exports/"))
