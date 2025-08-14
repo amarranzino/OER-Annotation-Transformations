@@ -48,8 +48,9 @@ annotation_clean <- annotation_import |>
   mutate(across(where(is.numeric),~na_if(., -999))) |>  #removes the -999 present for no data in numeric columns
   mutate(Comments = case_when(!is.na (IdentificationComments) & !is.na(OccurrenceComments) ~ paste0(IdentificationComments, OccurrenceComments, sep = "; "),
                               !is.na (IdentificationComments) & is.na(OccurrenceComments) ~ IdentificationComments,
-                              is.na(IdentificationComments) & !is.na (OccurrenceComments) ~ OccurrenceComments)) |> 
-  mutate (ScientificName = str_remove(ScientificName, "sp."))
+                              is.na(IdentificationComments) & !is.na (OccurrenceComments) ~ OccurrenceComments),
+         ScientificName = str_remove(ScientificName, "sp."),
+         Modified = (as.POSIXlt(paste0 (Modified, " 00:00:01"),tz = "UTC", format = " %Y-%m-%d %H:%M:%OS"))) #adds a time to the "Modified" column
 
 
 
@@ -128,15 +129,16 @@ annotation_event <- annotation_classification |>
 
 #merge bio, geo, and even datasets for a complete dataset
 annotation_full <- rbind(annotation_bio, annotation_geo, annotation_event) |> 
-  mutate(across(starts_with("NOAA"), as.character))
+  mutate(across(starts_with("NOAA"), as.character)) |> 
+  mutate(across(everything(), ~replace_na(as.character(.), ""))) #Remove all "NA"s from dataframe
+
 
 
 #As of 4 August 2025 - SeaTube is only updating Biological observations. For the time being, skip creation and merger of the geo and event dataframes and just write the bio dataframe to annotation_full
-annotation_full <- annotation_bio
-
-#Remove all "NA"s from dataframe
-annotation_full[is.na(annotation_full)] <- ""
-
+annotation_full <- rbind(annotation_bio, annotation_event) |> 
+ select(-c(Geoform, Substrate, Habitat)) |>
+ mutate(across(starts_with("NOAA"), as.character)) |> 
+ mutate(across(where(is.character), ~replace_na(as.character(.), ""))) #Remove all "NA"s from dataframe
 
 
 
