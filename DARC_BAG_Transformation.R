@@ -18,11 +18,12 @@ if(!require('worrms'))install.packages('worrms'); library('worrms')
 
 #set standard name to refer to your data (e.g., the expedition number)
 
-data_name <- "NA167"
+data_name <- "EX2304"
 
 #Read in the DARC Txt containing All annotations from expedition. Make sure the file name follows the convention Expedition number + "_DARC_Annotations_BAG.txt"
 
 annotation_import <- read.delim(paste0(wd, "/", data_name, "_DARC_Annotations_BAG.txt"))
+
 
 #Review annotation import to make sure it looks okay
 str(annotation_import)
@@ -59,6 +60,7 @@ annotation_clean <- annotation_import |>
          INFRAORDER = NA,
          SUPERFAMILY = NA,
          SUBFAMILY = NA,
+         ATTRIBUTIONS = NA,
          LOCALITY = trimws(str_extract(Locality, pattern = "[^;]+$"), which = "left"), #extracts the string after the last ; in the string ("[^;]+$) and removes the space (trimws) at the start of the string
          IMAGE_FILENAME = str_remove(ImageFilePath, pattern = "\\|.*")) |>  #removes anything after the first | in the string
   mutate(IMAGE_FILENAME = str_extract(IMAGE_FILENAME, pattern = "[^/]+$")) |>  #extracts only the text following the last / in the IMAGE_FILENAME (removes the filepath in front of the filename). "[^/]" matches any character that is not a /. "+" denotes that the [^/] should be matched at least once. "$" starts the search from the end of the string. 
@@ -74,7 +76,20 @@ annotation_clean <- annotation_import |>
   select(c(IMAGE_FILENAME, IMAGE_ALT_TEXT, IMAGE_PATH, SUPER_GROUP, GROUP_, SUBGROUP, CATEGORY, SUBCATEGORY, OCEAN, REGION, LOCALITY, CRUISEID, DIVE_NUM,
            DIVE_URL, DATE_TIME, DIVE_LAT, DIVE_LONG, IMAGE_LAT, IMAGE_LONG, VIDEO_SEGMENT_URL, DEPTH_M, TEMPERATURE, OXYGEN, SALINITY, PHYLUM, SUBPHYLUM, SUPERCLASS, CLASS,
            SUBCLASS, INFRACLASS, SUPERORDER, ORDER, SUBORDER, INFRAORDER, SUPERFAMILY, FAMILY, GENUS_SUBGENUS, CF_NR_SPECIES, SPECIES_SUBSPECIES, DESCRIPTION, FAMILY_OR_HIGHER,
-           COMMON_NAME, OTU, ICONIC_IMAGE, TRACKING_ID, TAXON_RANK, SUBFAMILY, MORPHOSPECIES, VESSEL, APHIA_ID, PHOTO_QUALITY, PLATFORM))
-  
+           COMMON_NAME, OTU, ICONIC_IMAGE, TRACKING_ID, TAXON_RANK, SUBFAMILY, MORPHOSPECIES, VESSEL, APHIA_ID, PHOTO_QUALITY, PLATFORM, ATTRIBUTIONS)) |> 
+  mutate(VESSEL =  case_when(VESSEL == "Okeanos Explorer" ~ "NOAA Ship Okeanos Explorer",
+                             VESSEL == "Nautilus" ~ "E/V Nautilus"))  #rename ships to full name of vessel
+
+
+### Export file to send to BAG
+
+#Create a directory to store exports in
+dir.create(paste0(wd,"/Exports/BAG")) #create a folder in your working directory called "Exports" if it does not already exist
+path <- paste0(wd, "/Exports/BAG")
+
+filename = paste0(data_name,"_BAG_Export.csv")
+
+write.csv(x = annotation_clean, file = file.path(path, filename), row.names = FALSE)
+
 
 
