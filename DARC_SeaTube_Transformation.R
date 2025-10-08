@@ -33,7 +33,7 @@ str(annotation_import)
 #Create a dataframe with annotaor email addresses to reference later
 #NEED TO: figure out how to check that these are the only names in the CreatorName col
 emails <- data.frame (name = c("Putts, Meagan", "hcarlson", "Bingo, Sarah", "Cunanan, Nikki", "Judah, Aaron"),
-                      email = c( "puttsmr@hawaii.edu", "hcarlson@hawaii.edu", "sarahr6@hawaii.edu", "tngutlay@hawaii.edu", "ajudah@hawaii.edu" ))
+                      email = c( "meagan.putts@noaa.gov", "hcarlson@hawaii.edu", "sarahr6@hawaii.edu", "tngutlay@hawaii.edu", "ajudah@hawaii.edu" ))
 
 #Create a column that has dive number 
 #This is different for Okeanos vs Nautilus dives
