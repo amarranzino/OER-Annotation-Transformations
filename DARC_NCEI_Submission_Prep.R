@@ -19,7 +19,7 @@ if(!require('tidyverse'))install.packages('tidyverse'); library('tidyverse')
 
 #set standard name to refer to your data (e.g., the expedition number)
 
-data_name <- "EX2306"
+data_name <- "EX2304"
 
 #Read in the DARC TSV containing All annotations from expedition. Make sure the file name follows the convention Expedition number + "_DARC_Annotations_Full.tsv"
 
@@ -43,8 +43,9 @@ annotation_clean <- annotation_import |>
 
 #Create a directory to store exports in
 dir.create(paste0(wd,"/Exports/NCEI"))
+dir.create(paste0(wd,"/Exports/NCEI/", data_name))
 
-path <- paste0(wd, "/Exports/NCEI")
+path <- paste0(wd,"/Exports/NCEI/", data_name)
 
 #create a new dataframe for each dive and export as a .csv
 for (i in 1:n_distinct(annotation_clean$DiveNumber)){
