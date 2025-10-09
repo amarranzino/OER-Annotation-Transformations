@@ -44,6 +44,9 @@ seatube <- data.frame(DiveNumber = c("01", "02", "03", "04", "05", "06", "07", "
                                "https://data.oceannetworks.ca/app/dive-logs/6610", #Dive07 URL
                                "https://data.oceannetworks.ca/app/dive-logs/6620"))  #Dive08 URL
 
+#Set the attribution statement. For Okeanos data, use the following statement. For Nautilus data use the expedition specific statement. 
+attribution <- paste0("This research used data collected during NOAA Ship Okeanos Explorer expedition ", data_name, ", led by NOAA Ocean Exploration. Taxonomic identifications provided by the Deep-sea Animal Research Center at the University of Hawai'i at Manoa.")
+
 head(seatube)
 
 #READ IN DATA ---------------------------------------------------------------------------------
@@ -57,7 +60,14 @@ annotation_import <- read.delim(paste0(wd, "/", data_name, "_DARC_Annotations_BA
 str(annotation_import)
 
 
+
 #cLEAN DATAFRAME AND PUT IN BAG FORMAT ----------------------------------------------------------
+
+#Ensure only the expedition of interest is included in dataset
+annotation_import <- annotation_import |> 
+  filter(SurveyID == data_name)
+
+str(annotation_import$SurveyID) #this should only return expedition of interest that you named as your data_name
 
 #Create a column that has dive number 
 #This is different for Okeanos vs Nautilus dives
@@ -69,7 +79,11 @@ annotation_clean <- annotation_import |>
   mutate(Date = as.Date(ObservationDate, origin = "1899-12-30"),   #Format date column into date format. Origin based on the issue with importing Excel data. 
          Time = ObservationTime*86400) |>  #Format the time column into number of seconds
   #create a combined date time column in format used by SeaTube "YYYY-MM-DDTHH:MM:SSZ"
-  mutate (DATE_TIME = paste0(as.POSIXct(Date, tz= "UTC", format = "%Y-%m-%d"), "T", as.POSIXct(Time, tz="UTC", format = "%H:%M:%OS"), "Z")) |>  
+  # mutate(Date = as.POSIXct(Date, tz= "UTC", format = "%Y-%m-%d")) |> 
+  # mutate(DATE_TIME = paste0(Date, "T", Time,))
+  mutate(DATE_TIME = as.POSIXct(Date) + Time) |>
+  mutate(DATE_TIME = gsub(pattern = " UTC", "", DATE_TIME)) |> 
+  mutate(DATE_TIME = paste0(gsub(" ", "T", DATE_TIME), "Z"))|>
   left_join(seatube, by = NULL) |> #adds in the seatube URL for each dive from the seatube dataframe created above
   mutate(TRACKING_ID = str_remove(TrackingID, pattern = "\\|.*"),  #finds the first | in the string, removes the | (\\|) and character after it (.) any number of times (*)
          GENUS_SUBGENUS = paste (Genus, Species, sep = " '"),
@@ -77,7 +91,7 @@ annotation_clean <- annotation_import |>
          IMAGE_PATH = paste0("https://www.ncei.noaa.gov/waf/okeanos-animal-guide/images/", location, "/"),
          #Populate DIVE_URL with NCEI Oceanographic Package URL for Okeanos Explorer dives; leave blank for other vessels
          DIVE_URL = if_else(Vessel == "Okeanos Explorer", 
-                            paste0("https://www.ncei.noaa.gov/waf/okeanos-rov-cruises/",data_name, "/#tab-", as.numeric(DiveNumber)), NA),
+                            paste0("https://www.ncei.noaa.gov/waf/okeanos-rov-cruises/",SurveyID, "/#tab-", as.numeric(DiveNumber)), NA),
          #If Videos are on SeaTube, populate with the link to the timestamped Seatube video; leave blank if video not in seatube
          VIDEO_SEGMENT_URL = if_else(!is.na(DIVE_VIDEO_URL), 
                                      paste0(DIVE_VIDEO_URL, "?&time=", DATE_TIME), NA), #link to the annotation timestamp in SeaTube
@@ -97,25 +111,35 @@ annotation_clean <- annotation_import |>
          INFRAORDER = NA,
          SUPERFAMILY = NA,
          SUBFAMILY = NA,
-         ATTRIBUTIONS = NA,
+         ATTRIBUTIONS = attribution,
          LOCALITY = trimws(str_extract(Locality, pattern = "[^;]+$"), which = "left"), #extracts the string after the last ; in the string ("[^;]+$) and removes the space (trimws) at the start of the string
          #create a unique string to assign as the filename. This must be unique for each annotation. 
-         IMAGE_FILENAME = paste0(data_name, "_", gsub(" .*$", "", CombinedNameID), "_", TrackingID)) |> 
-   mutate(DIVE_LAT = round(Latitude, 2),
+         #IMAGE_FILENAME = paste0(gsub(" .*$", "", CombinedNameID), "_", str_extract(GuidePhoto, pattern = "[/;]+$"))) |> 
+         IMAGE_FILENAME = str_extract(GuidePhoto,  pattern = "[^/]+$"), which = "left" ) |> #keep only the file name from the GuidePhoto image path
+  mutate(IMAGE_FILENAME = gsub("\\.(jpg|png)$", "", IMAGE_FILENAME)) |> #reomove the file extension from the filename
+  mutate(DIVE_LAT = round(Latitude, 2),
          DIVE_LONG = round (Longitude, 2),
          IMAGE_LAT = round(Latitude, 5),
-         IMAGE_LONG = round (Longitude, 5)) |> 
-  rename(c(IMAGE_ALT_TEXT = CombinedNameID, OCEAN = Ocean, REGION = LargeMarineEcosystem, CRUISEID = SurveyID, DIVE_NUM = DiveNumber, DEPTH_M = DepthInMeters,
-           TEMPERATURE = Temperature, OXYGEN = Oxygen, SALINITY = Salinity, PHYLUM = Phylum, CLASS = Class, SUBCLASS = Subclass, ORDER = Order, SUBORDER = Suborder, 
+         IMAGE_LONG = round (Longitude, 5),
+         DEPTH_M = round(DepthInMeters, 0)) |> 
+  rename(c(IMAGE_ALT_TEXT = CombinedNameID, OCEAN = Ocean, REGION = LargeMarineEcosystem, CRUISEID = SurveyID, DIVE_NUM = DiveNumber, TEMPERATURE = Temperature, 
+           OXYGEN = Oxygen, SALINITY = Salinity, PHYLUM = Phylum, CLASS = Class, SUBCLASS = Subclass, ORDER = Order, SUBORDER = Suborder, 
            FAMILY = Family, COMMON_NAME = VernacularName, OTU = ScientificName, TAXON_RANK = TaxonRank, MORPHOSPECIES = Morphospecies, VESSEL = Vessel, 
-           APHIA_ID = AphiaID, ICONIC_IMAGE = PhotoQuality, PLATFORM = VehicleName, DESCRIPTION = IdentificationComments)) |> 
+           APHIA_ID = AphiaID, ICONIC_IMAGE = PhotoQuality, PLATFORM = VehicleName, DESCRIPTION = IdentificationComments, DARC_URL = GuidePhoto)) |> 
   select(c(IMAGE_FILENAME, IMAGE_ALT_TEXT, IMAGE_PATH, SUPER_GROUP, GROUP_, SUBGROUP, CATEGORY, SUBCATEGORY, OCEAN, REGION, LOCALITY, CRUISEID, DIVE_NUM,
            DIVE_URL, DATE_TIME, DIVE_LAT, DIVE_LONG, IMAGE_LAT, IMAGE_LONG, VIDEO_SEGMENT_URL, DEPTH_M, TEMPERATURE, OXYGEN, SALINITY, PHYLUM, SUBPHYLUM, SUPERCLASS, CLASS,
            SUBCLASS, INFRACLASS, SUPERORDER, ORDER, SUBORDER, INFRAORDER, SUPERFAMILY, FAMILY, GENUS_SUBGENUS, CF_NR_SPECIES, SPECIES_SUBSPECIES, DESCRIPTION, FAMILY_OR_HIGHER,
-           COMMON_NAME, OTU, ICONIC_IMAGE, TRACKING_ID, TAXON_RANK, SUBFAMILY, MORPHOSPECIES, VESSEL, APHIA_ID, PLATFORM, ATTRIBUTIONS)) |> 
+           COMMON_NAME, OTU, ICONIC_IMAGE, TRACKING_ID, TAXON_RANK, SUBFAMILY, MORPHOSPECIES, VESSEL, APHIA_ID, PLATFORM, ATTRIBUTIONS, DARC_URL)) |> 
   mutate(VESSEL =  case_when(VESSEL == "Okeanos Explorer" ~ "NOAA Ship Okeanos Explorer",
                              VESSEL == "Nautilus" ~ "E/V Nautilus"))  #rename ships to full name of vessel
 
+#check if there are any redundant strings in IMAGE_FILENAME 
+duplicate_filenames <- annotation_clean |> 
+ group_by(IMAGE_FILENAME) |> 
+  filter(n() >1) |> 
+  ungroup()
+
+nrow(duplicate_filenames)
 
 ### Export file to send to BAG
 
