@@ -19,7 +19,7 @@ if(!require('tidyverse'))install.packages('tidyverse'); library('tidyverse')
 
 #set standard name to refer to your data (e.g., the expedition number)
 
-data_name <- "EX2304"
+data_name <- "EX2301"
 
 #Read in the DARC TSV containing All annotations from expedition. Make sure the file name follows the convention Expedition number + "_DARC_Annotations_Full.tsv"
 
@@ -28,14 +28,22 @@ annotation_import <- read_tsv(paste0(wd, "/", data_name, "_DARC_Annotations_Full
 #Review annotation import to make sure it looks okay
 str(annotation_import)
 
+#check that you have the right dive and only a single dive in the dataset
+unique(annotation_import$SurveyID)
+
+
+#clean up the annotation dataset to include dive numbers and add units where necessary
 annotation_clean <- annotation_import |>   
   mutate(DiveNumber = case_when(Vessel == "Okeanos Explorer" ~ str_sub(Station,-2,-1),
                                 Vessel == "Nautilus" ~ str_sub(Station,-3,-1)))|> 
-  #(DiveNumber = as.factor(DiveNumber)) |> 
- # mutate(Annotation_timestamp = ymd(ObservationDate) +hms(ObservationTime))|>
-  #mutate(Annotation_timestamp = as.POSIXlt(Annotation_timestamp, tz = "UTC",format= " %Y-%m-%d %H:%M:%OS")) |> 
-  mutate(across(where(is.numeric),~na_if(., -999))) 
+   mutate(across(where(is.numeric),~na_if(., -999))) |> 
+  #add units to time, temperature, salinity, and O2 fields
+  rename(c(`TemperatureInDegreesC` = Temperature, `SalinityInPSU` = Salinity, `OxygenConcentrationInMillileterPerLiter` = Oxygen, 
+           `ObservationTimeUTC` = ObservationTime, `LatitudeDecimalDegree` = Latitude, `LongitudeDecimalDegree` = Longitude))
 
+#check which and how many dives you should have exported
+unique(annotation_clean$DiveNumber)
+length(unique(annotation_clean$DiveNumber))
 
 #DARC TSV includes all dives for an expedition. To prepare for archival with NCEI, we need to submit a single file for each dive.
 #Break up the full expedition into single dives and save each dive as a new file. 
