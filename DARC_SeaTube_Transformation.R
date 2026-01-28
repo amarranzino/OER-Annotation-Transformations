@@ -32,8 +32,8 @@ str(annotation_import)
 
 #Create a dataframe with annotaor email addresses to reference later
 #NEED TO: figure out how to check that these are the only names in the CreatorName col
-emails <- data.frame (name = c("Putts, Meagan", "hcarlson", "Bingo, Sarah", "Cunanan, Nikki", "Judah, Aaron"),
-                      email = c( "meagan.putts@noaa.gov", "hcarlson@hawaii.edu", "sarahr6@hawaii.edu", "tngutlay@hawaii.edu", "ajudah@hawaii.edu" ))
+# emails <- data.frame (name = c("Putts, Meagan", "hcarlson", "Bingo, Sarah", "Cunanan, Nikki", "Judah, Aaron"),
+#                       email = c( "meagan.putts@noaa.gov", "hcarlson@hawaii.edu", "sarahr6@hawaii.edu", "tngutlay@hawaii.edu", "ajudah@hawaii.edu" ))
 
 #Create a column that has dive number 
 #This is different for Okeanos vs Nautilus dives
@@ -44,13 +44,19 @@ annotation_clean <- annotation_import |>
   mutate(Annotation_timestamp = ymd(ObservationDate) +hms(ObservationTime))|>
   mutate(Annotation_timestamp = as.POSIXlt(Annotation_timestamp, tz = "UTC",format= " %Y-%m-%d %H:%M:%OS")) |> 
   mutate(`To Be Reviewed` = TRUE, Taxonomy = NA)|> 
-  left_join(emails, join_by(IdentifiedBy == name)) |>  #add emails for annotators based on referencing the email dataframe
+  mutate(name = "(DARC), The Deep-Sea Animal Research Center",
+         email = "DARC@soest.hawaii.edu") |> 
+  #left_join(emails, join_by(IdentifiedBy == name)) |>  #add emails for annotators based on referencing the email dataframe
   mutate(across(where(is.numeric),~na_if(., -999))) |>  #removes the -999 present for no data in numeric columns
   mutate(Comments = case_when(!is.na (IdentificationComments) & !is.na(OccurrenceComments) ~ paste0(IdentificationComments, OccurrenceComments, sep = "; "),
                               !is.na (IdentificationComments) & is.na(OccurrenceComments) ~ IdentificationComments,
                               is.na(IdentificationComments) & !is.na (OccurrenceComments) ~ OccurrenceComments),
-         ScientificName = str_remove(ScientificName, "sp."),
-         Modified = (as.POSIXlt(paste0 (Modified, " 00:00:01"),tz = "UTC", format = " %Y-%m-%d %H:%M:%OS"))) #adds a time to the "Modified" column
+         ScientificName = str_remove(ScientificName, "sp\\."), #must include the \\ before the period to let R know that the period needs to be taken literally. Otherwise it will treat the period as a wildcard 
+         Modified = (as.POSIXlt(paste0 (Modified, " 00:00:01"),tz = "UTC", format = " %Y-%m-%d %H:%M:%OS"))) |>  #adds a time to the "Modified" column
+  mutate(Comments = case_when(str_detect (ScientificName, "cf\\.") & is.na(Comments) ~ ScientificName,            #if there is a scientific name identified as a "cf.", move that to the comments section
+                              str_detect (ScientificName, "cf\\.") & !is.na(Comments) ~ paste0(ScientificName, " | ", Comments),
+                              TRUE ~ Comments)) |> 
+  mutate(ScientificName = str_remove(ScientificName, "cf\\..*"))  # and then remove the "cf." and the following text from the scientific name, leaving only the parent level ID for that row
 
 
 
@@ -108,9 +114,14 @@ annotation_classification<-annotation_clean |>
          `NOAA Biology/Categorical Abundance` = CategoricalAbundance, `NOAA Biology/Verbatim Size` = VerbatimSize, `NOAA Biology/Minimum Size` = MinimumSize,
          `NOAA Biology/Maximum Size` = MaximumSize, `NOAA Biology/Condition` = Condition, `NOAA Biology/Associated Taxa` = AssociatedTaxa, 
          `NOAA Biology/Location Accuracy` = LocationAccuracy, `NOAA Biology/Record Type` = RecordType, `Creation timestamp` = Modified) |> 
-  relocate(c('Creation timestamp', Comments), .before = `To Be Reviewed`)
+  relocate(c('Creation timestamp', Comments), .before = `To Be Reviewed`) |> 
+  mutate(`Parent Taxon` = case_when (Taxon %in% c("Animalia", "Bacteria") ~ "Biota", #WoRMS API appears to not pull parent taxon for Domain level so manually enter it here
+                                     TRUE ~ `Parent Taxon`)) |> 
+  mutate(`Annotation timestamp` = format_ISO8601(`Annotation timestamp`, precision = "ymdhms")) #convert the timestamp to a format that will print the 00:00:00 for annotations at midnight
+           
 
-
+test <- annotation_classification |> 
+  filter(str_detect(`Annotation timestamp`, ".\\:.", negate = TRUE))
 
 #Create a biological annotation dataset that is a subset of annotation_clean with just biological data
 annotation_bio <- annotation_classification |> 
@@ -138,8 +149,8 @@ annotation_full <- rbind(annotation_bio, annotation_geo, annotation_event) |>
 annotation_full <- rbind(annotation_bio, annotation_event) |> 
  select(-c(Geoform, Substrate, Habitat)) |>
  mutate(across(starts_with("NOAA"), as.character)) |> 
- mutate(across(where(is.character), ~replace_na(as.character(.), ""))) #Remove all "NA"s from dataframe
-
+ mutate(across(where(is.character), ~replace_na(as.character(.), "")))   #Remove all "NA"s from dataframe
+ 
 
 
 #Create a directory to store exports in
