@@ -455,4 +455,4 @@ write.csv(x = occurrence, file = file.path(paste0(dir, "/Exports/OBIS/", data_na
 write.csv(x = emof, file = file.path(paste0(dir, "/Exports/OBIS/", data_name), paste0(data_name, "_emofTable.csv")), row.names = FALSE) 
 write.csv(x = event, file = file.path(paste0(dir, "/Exports/OBIS/", data_name), paste0(data_name, "_eventTable.csv")), row.names = FALSE)   
 
-
+##
