@@ -21,6 +21,7 @@ setwd(dir)
 if(!require('tidyverse'))install.packages('tidyverse'); library('tidyverse') 
 if(!require('worrms'))install.packages('worrms'); library('worrms') 
 if(!require("googlesheets4")) install.packages("googlesheets4"); library("googlesheets4")
+if(!require("xlsx"))install.packages("xlsx"); library(xlsx)
 
 ## DEFINE TERMINOLOGY ####
 
@@ -153,10 +154,11 @@ missing_aphias <- which(!species$AphiaID %in% df$AphiaID) #returns a list of the
 length(missing_aphias)
 
 #' Check which AphiaIDs are unaccepted
-unaccepted <- df %>%
-  filter(status != "accepted")
+(unaccepted <- df %>%
+  filter(status != "accepted"))
 
-print(unaccepted)
+
+length(unaccepted)
 
 #' If there are unaccepted species names, determine if they are identification errors that need to be resolved in the original dataset
 #' If not, it is recommended that unaccepted names are left as is so that data submission reflects the original identification provided by DARC.
@@ -178,13 +180,37 @@ occurrence_annotations <- annotation_import |>
   mutate(diveNumber = case_when(Vessel == "Okeanos Explorer" ~ str_sub(Station,-2,-1),
                                 Vessel == "Nautilus" ~ str_sub(Station,-3,-1)))|>
   mutate(eventID = paste0(data_name, "_DIVE", diveNumber)) |> 
-  rename (occurrenceID = TrackingID, vernacularName = VernacularName, taxonID = AphiaID, specificEpithet = Species, infraspecificEpithet = Subspecies, 
-          verbatimIdentification = CombinedNameID, identificationRemarks = IdentificationComments, identifiedBy = IdentifiedBy, subgenus = Subgenus,
-          dateIdentified = IdentificationDate, identificationQualifier = IdentificationQualifier, identificationVerificationStatus = IdentificationVerificationStatus,
-          waterBody = Ocean, country = Country, locality = Locality, decimalLatitude = Latitude, decimalLongitude = Longitude, verbatimDepth = DepthInMeters, 
-          minimumDepthInMeters = MinimumDepthInMeters, maximumDepthInMeters = MaximumDepthInMeters, locationRemarks = LocationComments, parentEventID = SurveyID,
-          vitality = Condition, associatedTaxa = AssociatedTaxa, eventRemarks = OccurrenceComments, coordinateUncertaintyInMeters = LocationAccuracy,
-          habitat = Habitat, associatedMedia = HighlightImageFilePath, modified = Modified, scientificName = ScientificName, scientificNameAuthorship = ScientificNameAuthorship) |> 
+  rename (occurrenceID = TrackingID, 
+          vernacularName = VernacularName, 
+          taxonID = AphiaID, 
+          specificEpithet = Species, 
+          infraspecificEpithet = Subspecies, 
+          verbatimIdentification = CombinedNameID, 
+          identificationRemarks = IdentificationComments, 
+          identifiedBy = IdentifiedBy, 
+          subgenus = Subgenus,
+          dateIdentified = IdentificationDate, 
+          identificationQualifier = IdentificationQualifier, 
+          identificationVerificationStatus = IdentificationVerificationStatus,
+          waterBody = Ocean, 
+          country = Country, 
+          locality = Locality, 
+          decimalLatitude = Latitude, 
+          decimalLongitude = Longitude, 
+          verbatimDepth = DepthInMeters, 
+          minimumDepthInMeters = MinimumDepthInMeters, 
+          maximumDepthInMeters = MaximumDepthInMeters,
+          locationRemarks = LocationComments, 
+          parentEventID = SurveyID,
+          vitality = Condition, 
+          associatedTaxa = AssociatedTaxa, 
+          eventRemarks = OccurrenceComments, 
+          coordinateUncertaintyInMeters = LocationAccuracy,
+          habitat = Habitat, 
+          associatedMedia = HighlightImageFilePath, 
+          modified = Modified, 
+          scientificName = ScientificName, 
+          scientificNameAuthorship = ScientificNameAuthorship) |> 
   #remove annotations not associated with an identified taxa
   filter(!is.na(taxonID)) |> 
   #fix organismQuantity so it is populated with IndividualCount if available and CategoricalAbundance if that is populated instead. 
@@ -198,15 +224,67 @@ occurrence_annotations <- annotation_import |>
   #populate eventDate by concatenating ObservationDate and ObservationTime
   mutate(eventDate = ymd(ObservationDate) +hms(ObservationTime))|>
   mutate(eventDate = as.POSIXlt(eventDate, tz = "UTC",format= " %Y-%m-%d %H:%M:%OS")) |>  # final format needs to be  ISO 8601: YYYY-MM-DDTHH:MM:SSZ 
-  mutate (occurrenceStatus = "present", basisOfRecord = "MachineObservation", eventType = "Observation", samplingProtocol = "ROV dive",
+  mutate (occurrenceStatus = "present", 
+          basisOfRecord = "MachineObservation",
+          eventType = "Observation", 
+          samplingProtocol = "ROV dive",
           fundingAttribution = attribution,
           scientificName = (str_remove(scientificName, " sp."))) |> 
   #remove unnecessary columns
-  select (-c(SampleID, Citation, Repository, VernacularNameCategory, Phylum, Class, Subclass, Order, Suborder, Family, Subfamily, Genus, Morphospecies, Synonyms, 
-             LargeMarineEcosystem, FishCouncilRegion, DepthMethod, ObservationDate, ObservationTime, Vessel, PI, PIAffiliation, Purpose, SurveyComments, Station, SamplingEquipment, 
-             VehicleName, SampleAreaInSquareMeters, Density, Cover, VerbatimSize, MinimumSize, MaximumSize, WeightInKg, NavType, OtherData, Substrate, CMECSGeoForm, Temperature,
-             Salinity, Oxygen, RecordType, ImageFilePath, WebSite, EntryDate, Reporter, ReporterEmail, ReporterComments, EventID, diveNumber, IndividualCount,
-             CategoricalAbundance, TaxonRank, LifeScienceIdentifier)) |> 
+  select (-c(SampleID, 
+             Citation, 
+             Repository, 
+             VernacularNameCategory, 
+             Phylum, 
+             Class, 
+             Subclass, 
+             Order, 
+             Suborder, 
+             Family, 
+             Subfamily,
+             Genus, 
+             Morphospecies, 
+             Synonyms, 
+             LargeMarineEcosystem, 
+             FishCouncilRegion, 
+             DepthMethod, 
+             ObservationDate, 
+             ObservationTime,
+             Vessel,
+             PI, 
+             PIAffiliation, 
+             Purpose, 
+             SurveyComments, 
+             Station, 
+             SamplingEquipment, 
+             VehicleName, 
+             SampleAreaInSquareMeters, 
+             Density, 
+             Cover, 
+             VerbatimSize,
+             MinimumSize,
+             MaximumSize,
+             WeightInKg,
+             NavType,
+             OtherData,
+             Substrate,
+             CMECSGeoForm,
+             Temperature,
+             Salinity, 
+             Oxygen,
+             RecordType, 
+             ImageFilePath, 
+             WebSite,
+             EntryDate, 
+             Reporter,
+             ReporterEmail, 
+             ReporterComments, 
+             EventID, 
+             diveNumber, 
+             IndividualCount,
+             CategoricalAbundance, 
+             TaxonRank, 
+             LifeScienceIdentifier)) |> 
    #add in the taxonomic details from WoRMS by joining species dataframe (taxon_data) to this one
   left_join(y = taxa_data, by = join_by(taxonID == AphiaID), relationship = "many-to-one") |>  #do not define x - it will keep the pipe from working unless the occurrence df is created in advance
   #rename new columns as need
@@ -215,13 +293,63 @@ occurrence_annotations <- annotation_import |>
   relocate (eventID, parentEventID, .after = occurrenceID) |> 
   relocate (subgenus, infraspecificEpithet, specificEpithet, .after = genus) |> 
   relocate (scientificName : scientificNameID, .before = vernacularName) |> 
-  relocate (scientificNameID, .after = scientificName) |> 
-  #remove annotations for samples (add those in later)
+  relocate (scientificNameID, .after = scientificName) 
+
+#' Build a list of the rows that contain samples and their corresponding sample and occurrenceIDs
+sample_ids <- occurrence_annotations |>
+  filter(str_detect(occurrenceID, data_name)) |> 
+  separate_wider_delim(cols = occurrenceID, delim = " | ", names = c("occurrenceID", "otherCatalogNumbers")) |> 
+  select(occurrenceID, otherCatalogNumbers) |> 
+  mutate(otherCatalogNumbers = gsub(otherCatalogNumbers, pattern = "; ", replacement = " | ")) 
+
+#' Remove the pipes from occurrenceID column
+#' First check if there are any records that are NOT samples
+test<- occurrence_annotations |> 
+  filter(str_detect(occurrenceID, " | ")) |> 
   filter(!str_detect(occurrenceID, data_name))
+#'If any of the occurrenceIDs have additional information that is not a sample name, 
+#'print those and inspect them to determine if they contain information that needs to be kept, or if the text can be deleted
+if(nrow(test)>0){
+  print(test$occurrenceID)
+} else {
+  print("No pipes in occurrenceIDs")
+}
+
+#' Once you determine you can delete text, remove data after the | in the occurrence record 
+occurrence_annotations <- occurrence_annotations |> 
+  mutate(occurrenceID = str_remove(occurrenceID, " \\|.*")) #remove anything after the | for annotations that have more than once entry
 
 
-#check to see if scientific names from imported data match WoRMS
-scientificnames <- occurrence |> 
+#' Now we add more details about other catalog numbers for physical samples
+#' Can add in the short specimen ID from the SODA catalog
+#' First need to read in the sample data - also included in the event table portion below
+samples <- xlsx::read.xlsx(paste0(dir, "/Sample Data/", data_name, "_Cruise_Specimens.xlsx"), sheetIndex = 1) 
+
+#'Now add the Shortened.Specimen.ID and Accession.Number columns to the sample_ids dataframe
+sample_ids <- sample_ids |> 
+  left_join(samples, by = join_by (otherCatalogNumbers == Specimen.ID)) |> 
+  select(c(occurrenceID, otherCatalogNumbers, Shortened.Specimen.ID, Accession.Number, Smithsonian.Public.Link)) |> 
+ #if there is a shortened specimen ID, add that to the otherCatalogNumbers - this is what is used in the eventTable and used in eDNA submissions
+   mutate (otherCatalogNumbers = case_when(!is.na(Shortened.Specimen.ID) ~ paste0 (otherCatalogNumbers, " | ", Shortened.Specimen.ID),
+                                          TRUE ~ otherCatalogNumbers),
+          #if there are any smithsonian catalog numbers and links, add those into the relatedResourceID column (this may not be populated for recent expeditions)
+           relatedResourceID = case_when(!is.na(Accession.Number) & !is.na (Smithsonian.Public.Link) ~ paste0("SMNMH ", Accession.Number, " | ", Smithsonian.Public.Link),
+                                        !is.na(Accession.Number) & is.na(Smithsonian.Public.Link) ~ paste0("SMNMH ", Accession.Number),
+                                        is.na(Accession.Number) & !is.na(Smithsonian.Public.Link) ~ Smithsonian.Public.Link,
+                                        TRUE ~ NA),
+          relatedResourceType = case_when(!is.na(relatedResourceID) ~"PreservedSpecimen",
+                                          TRUE ~ NA)) |> 
+  select(-c(Shortened.Specimen.ID, Accession.Number, Smithsonian.Public.Link))
+
+#'Now add the sample_ids into the occurrence_annotations dataframe
+occurrence_annotations <- occurrence_annotations |> 
+  left_join(sample_ids)
+#'Check to make sure the join worked - resulting data frame should have long and short EX specimen IDs at the very least         
+test <- occurrence_annotations |> 
+  filter(!is.na(otherCatalogNumbers))
+
+#' Now check if the scientific names in the occurrence_annotations dataframe match WoRMS database
+scientificnames <- occurrence_annotations |> 
   mutate(WoRMS = scientificName %in% scientificname) |> 
   filter (WoRMS = FALSE)
 nrow(scientificnames)
@@ -232,24 +360,12 @@ if  (nrow(scientificnames)>0){
     print("Scintific names match")
     }
 
-#remove the redundant scientific name column once you verify all names match
-occurrence <- occurrence |> 
+#' remove the redundant scientific name column once you verify all names match
+occurrence_annotations <- occurrence_annotations |> 
   select(-scientificname)
 
-#check if there are any records that are NOT samples
-test<- occurrence |> 
-  filter(str_detect(occurrenceID, " | "))
 
-if(nrow(test)>0){
-  print(test$occurrenceID)
-  } else {
-  print("No pipes in occurrenceIDs")
-    }
-
-#verify you can remove data after the | in the occurrence record 
-occurrence <- occurrence |> 
-   mutate(occurrenceID = str_remove(occurrenceID, " \\|.*")) #remove anything after the | for annotations that have more than once entry
-    
+ 
 
 ### BUILD OCCURRENCE TABLE FOR SAMPLES [incomplete] ####
 #' Determine how to add in catalog Numbers and smithsonian ID for samples collected - 
@@ -260,11 +376,50 @@ occurrence <- occurrence |>
 #' duplicated annotations do not have the sampe ID (some are IDed to finer resolution - need to be able to account for that)
 #' there are also some errors of incorrectly named samples - prefer to use SODA export since that has more extensive QA/QC
 #' 
-#' ~NOTE: 
-#' we do not have a list of Nautilus samples like we do for SODA, so we will need to rely on DARC annotations for those - 
-#' do we want to have standardized for all datasets? Or use SODA and merge based on "ShortSpec_ID"
-#' For Nautilus - do we just want to not include? Ask them for sample data log to be included later?
-#' 
+### FOR OKEANOS #####
+
+#DO NOt NEED THIS - just put samples in event table and add in data with EMOF
+
+
+#may need to filter out geo and water and only keep bio BUT ADD ALL to the event table
+#make a dataframe of the sample data from the original annotation import for more accurate species IDs
+
+
+#replicate the format of the occurrence_annotations dataframe 
+# occurrence_samples <- samples |> 
+#   #only keep biological samples
+#   filter(str_ends(Shortened.Specimen.ID, "B")) |> 
+#   #match the columns of the occurrence_annotations dataframe
+#   mutate(eventID = paste0(CruiseData_ID, "_", Dive.ID),
+#          verbatimIdentification = case_when (!is.na(Field.ID) & !is.na(Specimen.Comments) & !is.na(Lab.Identification) ~ paste0(Field.ID " | ", Specimen.Comments, " | ", Lab.Identification),
+#                                              !is.na(Field.ID) & !is.na(Lab.Identification) & is.na(Specimen.Comments) ~ paste0(Field.ID, " | ", Lab.Identification),
+#                                              !is.na(Field.ID) & !is.na(Specimen.Comments) & is.na(Lab.Identification) ~ paste0(Field.ID, " | ", Specimen.Comments),
+#                                              !is.na(Field.ID) & is.na(Specimen.Comments) & is.na(Lab.Identification) ~ Field.ID,
+#                                              is.na(Field.ID) & !is.na(Specimen.Comments) & !is.na(Lab.Identification) ~ paste0(Specimen.Comments, " | ", Lab.Identification),
+#                                              is.na(Field.ID) & !is.na(Specimen.Comments) & is.na(Lab.Identification) ~ Specimen.Comments, 
+#                                              is.na(Field.ID) & is.na(Specimen.Comments) & !is.na(Lab.Identification) ~ Lab.Identification),
+#          identificationRemarks = NA,
+#          identifiedBy = case_when(!is.na(Field.ID.By) & is.na(Lab.Identification.by) ~ Field.ID.By,
+#                                   !is.na(Field.ID.By) & !is.na(Lab.Identification.by) ~ paste0(Field.ID.By, " | ", Lab.Identification.by),
+#                                   is.na(Field.ID.By) & !is.na(Lab.Identification.by) ~ Lab.Identification.by, 
+#                                   is.na(Field.ID.By) & is.na(Lab.Identification.by) ~ NA),
+#          dateIdentified = NA,
+#          identificationQulifier = case_when(!is.na(Field.ID) & !is.na(Specimen.Comments) & !is.na(Lab.Identification) ~ "Field ID | Lab ID",
+#                                             !is.na(Field.ID) & !is.na(Lab.Identification) & is.na(Specimen.Comments) ~ "Field ID | Lab ID",
+#                                             !is.na(Field.ID) & !is.na(Specimen.Comments) & is.na(Lab.Identification) ~ "Field ID",
+#                                             !is.na(Field.ID) & is.na(Specimen.Comments) & is.na(Lab.Identification) ~ "Field ID",
+#                                             is.na(Field.ID) & !is.na(Specimen.Comments) & !is.na(Lab.Identification) ~ "Lab ID",
+#                                             is.na(Field.ID) & !is.na(Specimen.Comments) & is.na(Lab.Identification) ~ "Field ID", 
+#                                             is.na(Field.ID) & is.na(Specimen.Comments) & !is.na(Lab.Identification) ~ "Lab ID"),
+#          identificationVerificationStatus = 0, 
+#          waterBody = NA,
+#          country =
+                                             )|> 
+# rename(occurrenceID = Shortened.Specimen.ID, 
+#        parentEventID = CruiseData_ID
+#        verbatimIdentification = 
+
+
 #' The following code is to create a sample log from DARC annotations - but would prefer to use SODA log instead
 # samples <- annotation_import |>
 #   #pull only annotations for samples into a dataframe
@@ -335,10 +490,19 @@ occurrence <- occurrence |>
 # 
 # print(samples[240,"eventRemarks"])
 
+### FOR NAUTILUS (INCOMPLETE) #####
+#' ~NOTE: 
+#' we do not have a list of Nautilus samples like we do for SODA, so we will need to rely on DARC annotations for those - 
+#' do we want to have standardized for all datasets? Or use SODA and merge based on "ShortSpec_ID"
+#' For Nautilus - do we just want to not include? Ask them for sample data log to be included later?
+#' 
+#'
 
 
 
-## BUILD EVENT TABLE #### 
+## BUILD EVENT TABLE ####
+
+## EVENT TABLE FOR DEPLOYMENTS #####
 #' Event Table will be built off of the cruise_log dataframe, which contains details about each platform deployment on a cruise
 #' Event Table should include all information about the sampling event, such as date, location, depth, sampling protocol, etc.
 #' #' Event Core tables must have eventID, eventDate, decimalLatitude, decimalLongitude, countryCode (required for GBIF), and geodeticDatum (should be in WGS84)
@@ -347,7 +511,8 @@ occurrence <- occurrence |>
 #'
 #' NOTE: The following code will only work for EX Cruises
 #' For Nautilus cruises, some values will need to be changed 
-event <- cruise_log |> 
+
+  event <- cruise_log |>
   filter(PlatformType %in% c("ROV", "Rosette")) |> #only keep ROV dive and Rosette categories for now - determine if additional deployment types are desired and include those at a later date
   rename(parentEventID = CruiseID, 
           eventDate = Deployment_UTC_DateTime,
@@ -379,7 +544,56 @@ event <- cruise_log |>
          fundingAttribution,
          fundingAttributionID,
          geodeticDatum))
+ 
+## EVENT TABLE FOR SAMPLES #####
+ # Create another table with sampling events to add to the event table
        
+ #' Ingest sample data from last SODA export (note: this will only work for expeditions pre 2026)
+ #' Download the SODA sample export "EX2XXXX_Cruise_Specimens.xls" from the NCEI archive at the following site:
+ #' https://www.ncei.noaa.gov/data/oceans/archive/arc0241/0311845/1.1/data/0-data/EX_SODA_Archive_September_2025/exports/
+ #' 
+  
+ samples <- xlsx::read.xlsx(paste0(dir, "/Sample Data/", data_name, "_Cruise_Specimens.xlsx"), sheetIndex = 1)
+ str(samples)
+       
+       
+event_samples <- samples |> 
+  mutate(parentEventID =  paste0(CruiseData_ID, "_", Dive.ID),
+         eventType = "Sample",
+         minimumElevationInMeters = -Depth..m.,
+         maximumElevationInMeters = -Depth..m., 
+         samplingProtocol = "Remotely Operated Vehicle (ROV) dive, https://doi.org/10.25923/n605-za83",
+         eventRemarks = case_when(Collection.Reason != "Not Applicable" & !is.na(Field.ID) ~ paste0(Collection.Reason, " - ", Field.ID), 
+                                  Collection.Reason != "Not Applicable" & is.na(Field.ID) ~ Collection.Reason,
+                                  TRUE ~ Field.ID),
+         institutionID = "https://ror.org/05xqpda80",
+         institutionCode = "NOAA Ocean Exploration",
+         fundingAttribution = "NOAA Ocean Exploration",  ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition
+         fundingAttributionID = "https://ror.org/05xqpda80", ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition)
+         geodeticDatum = "WGS84", 
+         eventDate = lubridate::ymd_hms(paste0(CollectionDate, " ", CollectionTime..UTC.), tz = "UTC")) |> 
+  rename(eventID = Shortened.Specimen.ID,
+         decimalLatitude = Latitude..Dec.Deg.,
+         decimalLongitude = Longitude..Dec.Deg.) |> 
+  select(c(eventID, 
+           parentEventID,
+           eventType,
+           eventDate,
+           decimalLatitude,
+           decimalLongitude,
+           minimumElevationInMeters,
+           maximumElevationInMeters,
+           samplingProtocol,
+           eventRemarks,
+           institutionID,
+           institutionCode,
+           fundingAttribution,
+           fundingAttributionID,
+           geodeticDatum))
+
+#Combine the sample events with the full event dataframe
+event<- rbind(event, event_samples)
+      
 ## BUILD  EMOF [incomplete] ####
 #' The EMOF (extended measurement or fact) table is an extension within the Event Core. EMOFs provide additional information about an occurrence
 #' Within the EMOF, measurmentValue, measurementType, and measurmentUnit are condensed into their own columns (respectively)
@@ -421,7 +635,32 @@ emof_annotation <- annotation_import |>
          measurementValue = str_replace(measurementValue, "Deep Discoverer", "ROV Deep Discoverer"),
          measurementValue = str_replace(measurementValue, "Hercules", "ROV Hercules"))
 
-### BUILD EMOF FOR SAMPLES [incomplete] ####
+### BUILD EMOF FOR SAMPLES ####
+emof_samples <- samples |> 
+  mutate(parentEventID =  paste0(CruiseData_ID, "_", Dive.ID)) |> 
+  rename(eventID = Shortened.Specimen.ID,
+         ) |> 
+  select(eventID, parentEventID, Vessel, SamplingEquipment, VehicleName, Temperature..Deg.C., Salinity..psu., Dissolved.Oxygen..mg.l.) |> 
+  mutate(across(everything(), as.character)) |> 
+  pivot_longer(Vessel:Dissolved.Oxygen..mg.l., names_to = "measurementType", values_to = "measurementValue") |> 
+  mutate(measurementType = str_replace(measurementType, "SamplingEquipment", "Platform type")) |> 
+  mutate(measurementType = str_replace(measurementType, "VehicleName", "Platform Name")) |> 
+  mutate(measurementType = str_replace(measurementType, "Temperature..Deg.C.", "temperature")) |> 
+  mutate(measurementType = str_replace(measurementType, "Salinity..psu", "salinity")) |> 
+  mutate(measurementType = str_replace(measurementType, "Dissolved.Oxygen..mg.l.", "oxygenConcentration")) |> 
+  mutate(measurementUnits = case_when(measurementType == "temperature" ~ "degrees celcius",
+                                      measurementType == "salinity" ~ "PSU",
+                                      measurementType == "oxygenConcentration" ~ "mg/L"),
+         measurementTypeID = case_when(measurementType == "Vessel" ~ "https://vocab.nerc.ac.uk/collection/C17/current/334A/",
+                                       measurementType == "Platform type" ~ "https://vocab.nerc.ac.uk/collection/L06/current/20/ | https://mmisw.org/ont/ioos/platform/submersible",
+                                       measurementType == "temperature" ~ "https://vocab.nerc.ac.uk/collection/P01/current/TEMPCU01/ | https://vocab.nerc.ac.uk/collection/P06/current/UPAA/",
+                                       measurementType == "salinity" ~ "https://vocab.nerc.ac.uk/collection/P01/current/ODSDM021/ | https://vocab.nerc.ac.uk/collection/P06/current/",
+                                       measurementType == "oxygenConcentration" ~ "https://vocab.nerc.ac.uk/collection/P01/current/DOXYUCKG/ | https://vocab.nerc.ac.uk/collection/P06/current/UMGL/"),
+         measurementValue = str_replace(measurementValue, "Okeanos Explorer", "NOAA Ship Okeanos Explorer"),
+         measurementValue = str_replace(measurementValue, "ROV", "submersible"),
+         measurementValue = str_replace(measurementValue, "Deep Discoverer", "ROV Deep Discoverer")) |> 
+  mutate(occurrenceID = NA) |> 
+  relocate(occurrenceID, .before = eventID)
 
 
 ### BUILD EMOF FOR EVENTS [incomplete] ####
@@ -438,12 +677,17 @@ emof_event <- cruise_log |>
                                 measurementValue == "ROV Deep Discoverer" ~ "https://vocab.nerc.ac.uk/collection/L06/current/20/ | https://mmisw.org/ont/ioos/platform/submersible",
                                 measurementType == "Platform type" & is.na(measurementValue) ~ "https://vocab.nerc.ac.uk/collection/L05/current/130/ | https://vocab.nerc.ac.uk/collection/L05/current/30/")) |> 
   mutate(measurementValue = case_when (measurementValue == "ROV" ~ str_replace(measurementValue, "ROV", "submersible"),
-                                       TRUE ~ measurementValue))
+                                       TRUE ~ measurementValue),
+         measurementUnits = NA,
+         occurrenceID = NA) |> 
+  relocate(measurementTypeID, .after = last_col()) |> 
+  relocate(occurrenceID, .before = eventID)
+  
          
   
 #### COMBINE ANNOTATION, SAMPLE AND EVENT EMOFS ####
 
-emof <- cbind(emof_annotation, emof_event)
+emof <- rbind(emof_annotation, emof_event, emof_samples)
 
 ### EXPORT DATAFRAMES ####
 
@@ -451,8 +695,9 @@ emof <- cbind(emof_annotation, emof_event)
 dir.create(paste0(dir,"/Exports/OBIS"))
 dir.create(paste0(dir, "/Exports/OBIS/", data_name))
 
-write.csv(x = occurrence, file = file.path(paste0(dir, "/Exports/OBIS/", data_name), paste0(data_name, "_occurrenceTable.csv")), row.names = FALSE)
+write.csv(x = occurrence_annotations, file = file.path(paste0(dir, "/Exports/OBIS/", data_name), paste0(data_name, "_occurrenceTable.csv")), row.names = FALSE)
 write.csv(x = emof, file = file.path(paste0(dir, "/Exports/OBIS/", data_name), paste0(data_name, "_emofTable.csv")), row.names = FALSE) 
 write.csv(x = event, file = file.path(paste0(dir, "/Exports/OBIS/", data_name), paste0(data_name, "_eventTable.csv")), row.names = FALSE)   
 
-##
+#
+
