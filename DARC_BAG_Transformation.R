@@ -109,7 +109,7 @@ annotation_clean <- annotation_import |>
          IMAGE_PATH = paste0("https://www.ncei.noaa.gov/waf/okeanos-animal-guide/images/", locality, "/"),
          #Populate DIVE_URL with NCEI Oceanographic Package URL for Okeanos Explorer dives; leave blank for other vessels
          DIVE_URL = if_else(Vessel == "Okeanos Explorer", 
-                            paste0("https://www.ncei.noaa.gov/waf/okeanos-rov-cruises/",SurveyID, "/#tab-", as.numeric(DiveNumber)), NA),
+                            paste0("https://www.ncei.noaa.gov/waf/okeanos-rov-cruises/",tolower(SurveyID), "/#tab-", as.numeric(DiveNumber)), NA),
          #If Videos are on SeaTube, populate with the link to the timestamped Seatube video; leave blank if video not in seatube
          VIDEO_SEGMENT_URL = if_else(!is.na(DIVE_VIDEO_URL), 
                                      paste0(DIVE_VIDEO_URL, "?&time=", DATE_TIME), NA), #link to the annotation timestamp in SeaTube
