@@ -8,7 +8,7 @@
 ## Working Directory should call location where DARC .tsv files are stored on computer
 ## All .tsv files need to conform to the following naming convention: Expedition number + "_DARC_Annotations_Full.tsv"
 
-wd <- "C:/Users/ashley.marranzino/Documents/Annotations/DARC Annotations"
+wd <- "C:/Users/ashley.marranzino/Documents/Annotations"
 
 setwd(wd)
 
@@ -20,17 +20,17 @@ if(!require('worrms'))install.packages('worrms'); library('worrms')
 
 #set standard name to refer to your data (e.g., the expedition number)
 
-data_name <- "EX2306"
+data_name <- "EX2304"
 
 #Read in the DARC TSV containing All annotations from expedition. Make sure the file name follows the convention Expedition number + "_DARC_Annotations_Full.tsv"
 
-annotation_import <- read_tsv(paste0(wd, "/", data_name, "_DARC_Annotations_Full.tsv"))
+annotation_import <- read_tsv(paste0(wd, "/DARC Annotations", data_name, "_DARC_Annotations_Full.tsv"))
 
 #Review annotation import to make sure it looks okay
 str(annotation_import)
 
 
-#Create a dataframe with annotaor email addresses to reference later
+#Create a dataframe with annotator email addresses to reference later
 #NEED TO: figure out how to check that these are the only names in the CreatorName col
 # emails <- data.frame (name = c("Putts, Meagan", "hcarlson", "Bingo, Sarah", "Cunanan, Nikki", "Judah, Aaron"),
 #                       email = c( "meagan.putts@noaa.gov", "hcarlson@hawaii.edu", "sarahr6@hawaii.edu", "tngutlay@hawaii.edu", "ajudah@hawaii.edu" ))
@@ -42,7 +42,7 @@ annotation_clean <- annotation_import |>
   mutate(DiveNumber = case_when(Vessel == "Okeanos Explorer" ~ str_sub(Station,-2,-1),
                                        Vessel == "Nautilus" ~ str_sub(Station,-3,-1)))|> 
   mutate(Annotation_timestamp = ymd(ObservationDate) +hms(ObservationTime))|>
-  mutate(Annotation_timestamp = as.POSIXlt(Annotation_timestamp, tz = "UTC",format= " %Y-%m-%d %H:%M:%OS")) |> 
+  mutate(Annotation_timestamp = as.POSIXlt(Annotation_timestamp, tz = "UTC",format= "%Y-%m-%d %H:%M:%OS")) |> 
   mutate(`To Be Reviewed` = TRUE, Taxonomy = NA)|> 
   mutate(name = "(DARC), The Deep-Sea Animal Research Center",
          email = "DARC@soest.hawaii.edu") |> 
@@ -117,8 +117,8 @@ annotation_classification<-annotation_clean |>
   relocate(c('Creation timestamp', Comments), .before = `To Be Reviewed`) |> 
   mutate(`Parent Taxon` = case_when (Taxon %in% c("Animalia", "Bacteria") ~ "Biota", #WoRMS API appears to not pull parent taxon for Domain level so manually enter it here
                                      TRUE ~ `Parent Taxon`)) |> 
-  mutate(`Annotation timestamp` = format_ISO8601(`Annotation timestamp`, precision = "ymdhms")) #convert the timestamp to a format that will print the 00:00:00 for annotations at midnight
-           
+  #mutate(`Annotation timestamp` = format_ISO8601(`Annotation timestamp`, precision = "ymdhms")) #convert the timestamp to a format that will print the 00:00:00 for annotations at midnight
+   mutate(`Annotation timestamp` = format(`Annotation timestamp`, "%Y-%m-%d %H:%M:%OS"))        
 
 test <- annotation_classification |> 
   filter(str_detect(`Annotation timestamp`, ".\\:.", negate = TRUE))
@@ -155,6 +155,8 @@ annotation_full <- rbind(annotation_bio, annotation_event) |>
 
 #Create a directory to store exports in
 dir.create(paste0(wd,"/Exports/"))
+dir.create(paste0(wd, "/Exports/SeaTube"))
+dir.create(paste0(wd, "/Exports/SeaTube/", data_name))
 
 #create a new dataframe for each dive and export as a .csv
 for (i in 1:n_distinct(annotation_full$DiveNumber)){
@@ -166,5 +168,5 @@ for (i in 1:n_distinct(annotation_full$DiveNumber)){
   
   names(dat)
   
-  write.csv(dat,paste0(wd,"/Exports/SeaTube_", filename), row.names = FALSE)
+  write.csv(dat,paste0(wd,"/Exports/SeaTube/", data_name, "/SeaTube_", filename), row.names = FALSE)
 }
