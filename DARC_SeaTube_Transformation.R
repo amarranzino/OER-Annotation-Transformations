@@ -42,17 +42,24 @@ annotation_clean <- annotation_import |>
          email = "DARC@soest.hawaii.edu") |> 
   #left_join(emails, join_by(IdentifiedBy == name)) |>  #add emails for annotators based on referencing the email dataframe
   mutate(across(where(is.numeric),~na_if(., -999))) |>  #removes the -999 present for no data in numeric columns
-  mutate(Comments = case_when(!is.na (IdentificationComments) & !is.na(OccurrenceComments) ~ paste0(IdentificationComments, OccurrenceComments, sep = "; "),
+  mutate(Comments = case_when(!is.na (IdentificationComments) & 
+                                !is.na(OccurrenceComments) ~ paste0(IdentificationComments, OccurrenceComments, sep = "; "),
                               !is.na (IdentificationComments) & is.na(OccurrenceComments) ~ IdentificationComments,
                               is.na(IdentificationComments) & !is.na (OccurrenceComments) ~ OccurrenceComments),
          ScientificName = str_remove(ScientificName, "sp\\."), #must include the \\ before the period to let R know that the period needs to be taken literally. Otherwise it will treat the period as a wildcard 
          Modified = (as.POSIXlt(paste0 (Modified, " 00:00:01"),tz = "UTC", format = " %Y-%m-%d %H:%M:%OS"))) |>  #adds a time to the "Modified" column
-  mutate(Comments = case_when(str_detect (ScientificName, "cf\\.") & is.na(Comments) ~ ScientificName,            #if there is a scientific name identified as a "cf.", move that to the comments section
-                              str_detect (ScientificName, "cf\\.") & !is.na(Comments) ~ paste0(ScientificName, " | ", Comments),
-                              TRUE ~ Comments)) |> 
-  mutate(ScientificName = str_remove(ScientificName, "cf\\..*"))  # and then remove the "cf." and the following text from the scientific name, leaving only the parent level ID for that row
+  #Cannot have a "cf. " or "nr. " in the scientific names since these are not recognized by WoRMS. If there is a species identified with a cf. or nr. status, 
+  #add that ID to the comments section and then remove the cf. or nr. ID 
+  mutate(Comments = case_when(str_detect(ScientificName, "cf\\. | nr\\.") & 
+                                !is.na(Comments) &
+                                !str_detect(Comments, fixed(ScientificName)) ~ paste0(Comments, " | ", ScientificName),
+                              str_detect(ScientificName, "cf\\..* | nr\\..*") & is.na(Comments) ~ ScientificName,
+                              TRUE ~ Comments))|> 
+  mutate(ScientificName = str_remove(ScientificName, "cf\\..*")) |>   # and then remove the "cf." and the following text from the scientific name, leaving only the parent level ID for that row
+  mutate(ScientificName = str_remove(ScientificName, "nr\\..*"))       # remove the "nr." and following text from scientific names, leaving only the parent level ID for that row
 
 
+  
 
 #### Determine Parent taxon for each annotation ####
 
@@ -164,3 +171,5 @@ for (i in 1:n_distinct(annotation_full$DiveNumber)){
   
   write.csv(dat,paste0(wd,"/Exports/SeaTube/", data_name, "/SeaTube_", filename), row.names = FALSE)
 }
+
+
