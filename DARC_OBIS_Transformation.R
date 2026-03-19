@@ -228,7 +228,7 @@ occurrence_annotations <- annotation_import |>
           basisOfRecord = "MachineObservation",
           eventType = "Observation", 
           samplingProtocol = "ROV dive",
-          fundingAttribution = attribution,
+          #fundingAttribution = attribution,
           scientificName = (str_remove(scientificName, " sp."))) |> 
   #remove unnecessary columns
   select (-c(SampleID, 
@@ -284,7 +284,9 @@ occurrence_annotations <- annotation_import |>
              IndividualCount,
              CategoricalAbundance, 
              TaxonRank, 
-             LifeScienceIdentifier)) |> 
+             LifeScienceIdentifier,
+             DataProvider,
+             DataContact)) |> 
    #add in the taxonomic details from WoRMS by joining species dataframe (taxon_data) to this one
   left_join(y = taxa_data, by = join_by(taxonID == AphiaID), relationship = "many-to-one") |>  #do not define x - it will keep the pipe from working unless the occurrence df is created in advance
   #rename new columns as need
@@ -525,8 +527,8 @@ occurrence_annotations <- occurrence_annotations |>
          institutionCode = "NOAA Ocean Exploration",
          eventType = "Survey",
          geodeticDatum = "WGS84",
-         fundingAttribution = "NOAA Ocean Exploration",  ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition
-         fundingAttributionID = "https://ror.org/05xqpda80", ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition
+         #fundingAttribution = "NOAA Ocean Exploration",  ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition
+         #fundingAttributionID = "https://ror.org/05xqpda80", ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition
          samplingProtocol = case_when(PlatformType == "ROV" ~ "Remotely Operated Vehicle (ROV) dive, https://doi.org/10.25923/n605-za83", #provides link to the ROV manual in the IR
                                       PlatformType == "Rosette" ~ "CTD Rosette deployment")) |>  
   select(c(eventID, 
@@ -621,7 +623,7 @@ emof_annotation <- annotation_import |>
   mutate(measurementType = str_replace(measurementType, "Temperature", "temperature")) |> 
   mutate(measurementType = str_replace(measurementType, "Salinity", "salinity")) |> 
   mutate(measurementType = str_replace(measurementType, "Oxygen", "oxygenConcentration")) |> 
-  mutate(measurementUnits = case_when(measurementType == "temperature" ~ "degrees celcius",
+  mutate(measurementUnit = case_when(measurementType == "temperature" ~ "degrees celcius",
                                       measurementType == "salinity" ~ "PSU",
                                       measurementType == "oxygenConcentration" ~ "ml/L"),
          measurementTypeID = case_when(measurementType == "Vessel" ~ "https://vocab.nerc.ac.uk/collection/C17/current/334A/",
@@ -648,7 +650,7 @@ emof_samples <- samples |>
   mutate(measurementType = str_replace(measurementType, "Temperature..Deg.C.", "temperature")) |> 
   mutate(measurementType = str_replace(measurementType, "Salinity..psu", "salinity")) |> 
   mutate(measurementType = str_replace(measurementType, "Dissolved.Oxygen..mg.l.", "oxygenConcentration")) |> 
-  mutate(measurementUnits = case_when(measurementType == "temperature" ~ "degrees celcius",
+  mutate(measurementUnit = case_when(measurementType == "temperature" ~ "degrees celcius",
                                       measurementType == "salinity" ~ "PSU",
                                       measurementType == "oxygenConcentration" ~ "mg/L"),
          measurementTypeID = case_when(measurementType == "Vessel" ~ "https://vocab.nerc.ac.uk/collection/C17/current/334A/",
@@ -678,7 +680,7 @@ emof_event <- cruise_log |>
                                 measurementType == "Platform type" & is.na(measurementValue) ~ "https://vocab.nerc.ac.uk/collection/L05/current/130/ | https://vocab.nerc.ac.uk/collection/L05/current/30/")) |> 
   mutate(measurementValue = case_when (measurementValue == "ROV" ~ str_replace(measurementValue, "ROV", "submersible"),
                                        TRUE ~ measurementValue),
-         measurementUnits = NA,
+         measurementUnit = NA,
          occurrenceID = NA) |> 
   relocate(measurementTypeID, .after = last_col()) |> 
   relocate(occurrenceID, .before = eventID)
