@@ -301,8 +301,9 @@ occurrence_annotations <- annotation_import |>
 sample_ids <- occurrence_annotations |>
   filter(str_detect(occurrenceID, data_name)) |> 
   separate_wider_delim(cols = occurrenceID, delim = " | ", names = c("occurrenceID", "otherCatalogNumbers")) |> 
-  select(occurrenceID, otherCatalogNumbers) |> 
-  mutate(otherCatalogNumbers = gsub(otherCatalogNumbers, pattern = "; ", replacement = " | ")) 
+  #select(occurrenceID, scientificName:otherCatalogNumbers) |> 
+  mutate(otherCatalogNumbers = gsub(otherCatalogNumbers, pattern = "; ", replacement = " | ")) |> 
+  mutate(sampleID = otherCatalogNumbers ())
 
 #' Remove the pipes from occurrenceID column
 #' First check if there are any records that are NOT samples
@@ -367,9 +368,43 @@ occurrence_annotations <- occurrence_annotations |>
   select(-scientificname)
 
 
- 
+#' ensure there are no duplicate eventIDs in the occurrence_annotations dataframe
+
+duplicates <- occurrence_annotations |> 
+ group_by_all() |> 
+  filter(n() > 1) |> 
+  ungroup()
+
+if (nrow(duplicates) >0){
+  print(duplicates)
+} else{
+  print("No duplicate data")
+}
+
+#'if there are duplicated rows, remove them
+#'first double check to see how many rows the original dataframe has
+nrow(occurrence_annotations)
+#'then check how many duplicates there are
+nrow(duplicates)
+#keep only unique rows
+occurrence_annotations <- occurrence_annotations |> 
+  unique()
+#check that your occurrence_annotations dataframe still has the expected number of rows once duplicates have been removed
+nrow(occurrence_annotations)
+
+#'check to make sure every occurrenceID is unique
+duplicates <- occurrence_annotations |> 
+  group_by(occurrenceID) |> 
+  filter(n() >1) |> 
+  ungroup()
+if (nrow(duplicates) >0){
+  print(duplicates)
+} else{
+  print("No duplicate occurrenceIDs")
+}
 
 ### BUILD OCCURRENCE TABLE FOR SAMPLES [incomplete] ####
+
 #' Determine how to add in catalog Numbers and smithsonian ID for samples collected - 
 #' may need to create a separate dataframe for samples and bind to the occurrence table here
 #' may make the most sense to build a separate sample dataframe from SODA exports and then merge with this table
@@ -379,6 +414,68 @@ occurrence_annotations <- occurrence_annotations |>
 #' there are also some errors of incorrectly named samples - prefer to use SODA export since that has more extensive QA/QC
 #' 
 ### FOR OKEANOS #####
+
+samples <- xlsx::read.xlsx(paste0(dir, "/Sample Data/", data_name, "_Cruise_Specimens.xlsx"), sheetIndex = 1)
+str(samples)
+
+#' Need to make sure samples are add into occurrence table and NOT event table
+#' but do not have aphia IDs for specimens... 
+
+occurrence_samples <- samples |> 
+  unite(col = "identificationRemarks", 
+        Collection.Reason, IdentificationRemarks, Specimen.Comments, 
+        sep = " | ", 
+        na.rm = TRUE,
+        remove = TRUE) |> 
+  unite(col = "verbatimIdentification",
+        Field.ID, Lab.Identification,
+        sep =  " | ", 
+        na.rm = TRUE,
+        remove = FALSE) |> 
+  mutate(eventID =  paste0(CruiseData_ID, "_", Dive.ID),
+         eventType = "Sample",
+         minimumElevationInMeters = -Depth..m.,
+         maximumElevationInMeters = -Depth..m., 
+         samplingProtocol = "Remotely Operated Vehicle (ROV) dive, https://doi.org/10.25923/n605-za83",
+         institutionID = "https://ror.org/05xqpda80",
+         institutionCode = "NOAA Ocean Exploration",
+         fundingAttribution = "NOAA Ocean Exploration",  ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition
+         fundingAttributionID = "https://ror.org/05xqpda80", ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition)
+         geodeticDatum = "WGS84", 
+         eventDate = lubridate::ymd_hms(paste0(CollectionDate, " ", CollectionTime..UTC.), tz = "UTC"),
+         scientificName = coalesce(ScientificName, Genus, Family, Order, Class, Phylum)) |> 
+    rename(occurrenceID = Shortened.Specimen.ID,
+         decimalLatitude = Latitude..Dec.Deg.,
+         decimalLongitude = Longitude..Dec.Deg.,
+         parentEventID = CruiseData_ID, 
+         identifiedBy = Field.ID.By,
+         dateIdentified = Lab.IdentificationDate) |> 
+  #remove any rows that do not have positional data associated with them
+  filter(!is.na(decimalLatitude))
+  
+unique_sample_ids <-occurrence_samples |> 
+  select(scientificName) |> 
+  distinct() |> 
+  filter(!is.na(scientificName) & scientificName != "") 
+
+### NEED TO DETERMINE THE APHIA ID FOR EACH UNIQUE SCIENTIFIC NAME AND BIND IT BACK INTO THE DATAFRAME ####
+
+  select(c(eventID, 
+           parentEventID,
+           eventType,
+           eventDate,
+           decimalLatitude,
+           decimalLongitude,
+           minimumElevationInMeters,
+           maximumElevationInMeters,
+           samplingProtocol,
+           eventRemarks,
+           institutionID,
+           institutionCode,
+           #fundingAttribution,
+           #fundingAttributionID,
+           geodeticDatum))
+
 
 #DO NOt NEED THIS - just put samples in event table and add in data with EMOF
 
@@ -543,8 +640,8 @@ occurrence_annotations <- occurrence_annotations |>
          eventRemarks,
          institutionID,
          institutionCode,
-         fundingAttribution,
-         fundingAttributionID,
+         #fundingAttribution,
+         #fundingAttributionID,
          geodeticDatum))
  
 ## EVENT TABLE FOR SAMPLES #####
@@ -555,46 +652,42 @@ occurrence_annotations <- occurrence_annotations |>
  #' https://www.ncei.noaa.gov/data/oceans/archive/arc0241/0311845/1.1/data/0-data/EX_SODA_Archive_September_2025/exports/
  #' 
   
- samples <- xlsx::read.xlsx(paste0(dir, "/Sample Data/", data_name, "_Cruise_Specimens.xlsx"), sheetIndex = 1)
- str(samples)
-       
-       
-event_samples <- samples |> 
-  mutate(parentEventID =  paste0(CruiseData_ID, "_", Dive.ID),
-         eventType = "Sample",
-         minimumElevationInMeters = -Depth..m.,
-         maximumElevationInMeters = -Depth..m., 
-         samplingProtocol = "Remotely Operated Vehicle (ROV) dive, https://doi.org/10.25923/n605-za83",
-         eventRemarks = case_when(Collection.Reason != "Not Applicable" & !is.na(Field.ID) ~ paste0(Collection.Reason, " - ", Field.ID), 
-                                  Collection.Reason != "Not Applicable" & is.na(Field.ID) ~ Collection.Reason,
-                                  TRUE ~ Field.ID),
-         institutionID = "https://ror.org/05xqpda80",
-         institutionCode = "NOAA Ocean Exploration",
-         fundingAttribution = "NOAA Ocean Exploration",  ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition
-         fundingAttributionID = "https://ror.org/05xqpda80", ##NOTE: May need to modify this for non-EX cruises if additional partners funded the expedition)
-         geodeticDatum = "WGS84", 
-         eventDate = lubridate::ymd_hms(paste0(CollectionDate, " ", CollectionTime..UTC.), tz = "UTC")) |> 
-  rename(eventID = Shortened.Specimen.ID,
-         decimalLatitude = Latitude..Dec.Deg.,
-         decimalLongitude = Longitude..Dec.Deg.) |> 
-  select(c(eventID, 
-           parentEventID,
-           eventType,
-           eventDate,
-           decimalLatitude,
-           decimalLongitude,
-           minimumElevationInMeters,
-           maximumElevationInMeters,
-           samplingProtocol,
-           eventRemarks,
-           institutionID,
-           institutionCode,
-           fundingAttribution,
-           fundingAttributionID,
-           geodeticDatum))
+#Check to make sure there are no duplicate rows
+#'check to make sure every occurrenceID is unique
+duplicates <- event |> 
+  group_by_all() |> 
+  filter(n() >1) |> 
+  ungroup()
+if (nrow(duplicates) >0){
+  print(duplicates)
+  nrow(duplicates)
+} else{
+  print("No duplicate rows")
+}
 
-#Combine the sample events with the full event dataframe
-event<- rbind(event, event_samples)
+#'if there are duplicated rows, remove them
+#'first double check to see how many rows the original dataframe has
+nrow(event)
+#'then check how many duplicates there are
+nrow(duplicates)
+#keep only unique rows
+event <- event |> 
+  unique()
+#check that your occurrence_annotations dataframe still has the expected number of rows once duplicates have been removed
+nrow(event)
+
+#'check to make sure the eventIDs are not duplicated
+duplicateIDs <- event |> 
+  group_by(eventID) |> 
+  filter(n() >1) |> 
+  ungroup()
+if(nrow(duplicateIDs) >0){
+  print(duplicateIDs)
+  nrow(duplicateIDs)
+} else{
+  print("No duplicate eventIDs")
+}
+
       
 ## BUILD  EMOF [incomplete] ####
 #' The EMOF (extended measurement or fact) table is an extension within the Event Core. EMOFs provide additional information about an occurrence
@@ -701,5 +794,7 @@ write.csv(x = occurrence_annotations, file = file.path(paste0(dir, "/Exports/OBI
 write.csv(x = emof, file = file.path(paste0(dir, "/Exports/OBIS/", data_name), paste0(data_name, "_emofTable.csv")), row.names = FALSE) 
 write.csv(x = event, file = file.path(paste0(dir, "/Exports/OBIS/", data_name), paste0(data_name, "_eventTable.csv")), row.names = FALSE)   
 
-#
+
+
+
 
