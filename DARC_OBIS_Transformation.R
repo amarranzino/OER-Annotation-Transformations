@@ -160,16 +160,19 @@ length(missing_aphias)
 (unaccepted <- df %>%
   filter(status != "accepted"))
 
-
-length(unaccepted)
-
+if (nrow(unaccepted) > 0) {
+  print(paste0("Number unaccepted IDs: ", nrow(unaccepted)))
+  print(paste0("Status: ", unaccepted$status))
+  print(paste0("Unaccepted reason: ", unaccepted$unacceptreason))
+} else {
+  print("All IDs accepted.")
+}
 #' If there are unaccepted species names, determine if they are identification errors that need to be resolved in the original dataset
 #' If not, it is recommended that unaccepted names are left as is so that data submission reflects the original identification provided by DARC.
 #' OBIS system has a procedure for updating unaccepted AphiaIDs to currently accepted terminology, so the data will get cleaned on their end if needed.
 
 #' create a dataframe with the WoRMS details that are wanted in the occurrence table
 #' use the AphiaID to repopulate taxonomic ranks and lsid in the occurrence table
-
 taxa_data <- df |>
   distinct() |>
   select(c(AphiaID, scientificname, rank, kingdom, phylum, class, order, family, genus, lsid))
@@ -353,7 +356,7 @@ occurrence_annotations <- occurrence_annotations |>
 samples <- xlsx::read.xlsx(paste0(dir, "/Sample Data/", data_name, "_Cruise_Specimens.xlsx"), sheetIndex = 1)
 
 #' Now add the Shortened.Specimen.ID and Accession.Number columns to the sample_ids dataframe
-sample_ids <- sample_ids |>
+sample_ids_join <- sample_ids |>
   left_join(samples, by = join_by(otherCatalogNumbers == Specimen.ID)) |>
   select(c(occurrenceID, otherCatalogNumbers, Shortened.Specimen.ID, Accession.Number, Smithsonian.Public.Link)) |>
   # if there is a shortened specimen ID, add that to the otherCatalogNumbers - this is what is used in the eventTable and used in eDNA submissions
@@ -377,11 +380,16 @@ sample_ids <- sample_ids |>
   select(-c(Shortened.Specimen.ID, Accession.Number, Smithsonian.Public.Link))
 
 #' Now add the sample_ids into the occurrence_annotations dataframe
-occurrence_annotations <- occurrence_annotations |>
-  left_join(sample_ids)
+occurrence_annotations_join <- occurrence_annotations |>
+  left_join(sample_ids_join, by = "occurrenceID")
 #' Check to make sure the join worked - resulting data frame should have long and short EX specimen IDs at the very least
-test <- occurrence_annotations |>
+test <- occurrence_annotations_join |>
+  # filter(occurrenceID == "6bf5ca86-db07-4dc1-a597-3e46c7682d74")
   filter(!is.na(otherCatalogNumbers))
+
+# if join worked, overwrite the occurrence_annotation dataframe
+occurrence_annotations <- occurrence_annotations_join
+
 
 #' Now check if the scientific names in the occurrence_annotations dataframe match WoRMS database
 scientificnames <- occurrence_annotations |>
@@ -408,31 +416,20 @@ duplicates <- occurrence_annotations |>
 
 if (nrow(duplicates) > 0) {
   print(duplicates)
+  print(paste0("Number of rows in data: ", nrow(occurrence_annotations)))
+  print(paste0("Number of duplicates: ", nrow(duplicates)))
+  print(paste0("Number of expected rows after duplicate removal: ", (nrow(occurrence_annotations) - (nrow(duplicates) / 2))))
 } else {
   print("No duplicate data")
 }
 
 #' if there are duplicated rows, remove them
-#' first double check to see how many rows the original dataframe has
-nrow(occurrence_annotations)
-#' then check how many duplicates there are
-nrow(duplicates)
 # keep only unique rows
 occurrence_annotations <- occurrence_annotations |>
   unique()
 # check that your occurrence_annotations dataframe still has the expected number of rows once duplicates have been removed
 nrow(occurrence_annotations)
 
-#' check to make sure every occurrenceID is unique
-duplicates <- occurrence_annotations |>
-  group_by(occurrenceID) |>
-  filter(n() > 1) |>
-  ungroup()
-if (nrow(duplicates) > 0) {
-  print(duplicates)
-} else {
-  print("No duplicate occurrenceIDs")
-}
 
 ### BUILD OCCURRENCE TABLE FOR SAMPLES [incomplete] ####
 
@@ -444,13 +441,14 @@ if (nrow(duplicates) > 0) {
 #' Depending on status of records within SODA, identifications and Smithsonian catalog numbers may not be up to date -
 #' These should be updated once available.
 
-### FOR OKEANOS #####
+#### ~~ FOR OKEANOS ~~ #####
 
 samples <- xlsx::read.xlsx(paste0(dir, "/Sample Data/", data_name, "_Cruise_Specimens.xlsx"), sheetIndex = 1)
 str(samples)
 
 
 occurrence_samples <- samples |>
+  mutate(across(where(is.character), ~ na_if(., ""))) |>
   unite(
     col = "identificationRemarks",
     Collection.Reason, IdentificationRemarks, Specimen.Comments,
@@ -480,24 +478,41 @@ occurrence_samples <- samples |>
     scientificName = coalesce(ScientificName, Genus, Family, Order, Class, Phylum)
   ) |>
   rename(
-    occurrenceID = Shortened.Specimen.ID,
+    # occurrenceID = Shortened.Specimen.ID,
     decimalLatitude = Latitude..Dec.Deg.,
     decimalLongitude = Longitude..Dec.Deg.,
     parentEventID = CruiseData_ID,
     identifiedBy = Field.ID.By,
     dateIdentified = Lab.IdentificationDate
   ) |>
+  # if there are multiple subsamples - need to add that to the occurrenceID
+  unite(
+    col = "occurrenceID",
+    Shortened.Specimen.ID, SubSample.ID,
+    sep = "_",
+    na.rm = TRUE,
+    remove = FALSE
+  ) |>
   # remove any rows that do not have positional data associated with them
-  filter(!is.na(decimalLatitude))
+  filter(!is.na(decimalLatitude)) |>
+  mutate(verbatimIdentification = na_if(verbatimIdentification, ""))
 
 #' Check if there are bio samples missing species IDs.
 #' If yes, determine if you would like to manually edit to include or not
 test <- occurrence_samples |>
   filter(is.na(scientificName) & !Specimen.Type == "GEO")
 
+if (nrow(test) > 0) {
+  print(paste0(nrow(test), " biological samples missing AphiaIDs. Check to see if records should be manually updated (see code below)"))
+} else {
+  print("No rows missing AphiaIDs")
+}
+
 #' can modify specific scientific names that are only identified in other columns like
 #' verbatimIdentification here so they are included in the next steps.
 #' This should be modified for each dataset as necessary
+#'
+# USE THE FOLLOWING CODE TO MANUALLY REASSIGN ROWS IF NEEDED
 occurrence_samples <- occurrence_samples |>
   mutate(scientificName = case_when(
     verbatimIdentification == "Unidentified" ~ "Biota",
@@ -543,40 +558,89 @@ for (i in seq_along(grouped_list)) {
   )
 
   df[[i]] <- batch_results
+  message(paste("Done processing batch ", i, " of ", length(grouped_list)))
 }
 
 # turn the list of lists created by the loop into a dataframe containing species details
 final_df <- bind_rows(df)
 
+# if there are duplicated aphiaIDs - get rid of the unaccepted aphiaID
+aphia_ids <- final_df |>
+  group_by(scientificname) |>
+  filter(
+    if (n() > 1) {
+      status == "accepted"
+    } else {
+      TRUE
+    }
+  ) |>
+  ungroup()
+
 ### NEXT STEP COMBINE THE DATA INTO THE SPECIES LIST DATAFRAME
 
-
 # add the aphiaID and taxonomic data to the occurrence_samples dataframe
-occurrence_samples <- occurrence_samples |>
-  left_join(final_df,
+occurrence_samples_aphia <- occurrence_samples |>
+  left_join(aphia_ids,
     join_by(scientificName == scientificname),
     relationship = "many-to-many"
   )
 
 ## CHECK WHICH Samples are missing aphia IDs
-no_aphia <- occurrence_samples |>
+no_aphia <- occurrence_samples_aphia |>
   filter(is.na(AphiaID) & Specimen.Type == "BIO")
 
 if (nrow(no_aphia) > 0) {
-  paste0(
-    "Specimen number: ", no_aphia$occurrenceID,
-    "; Verbatim Identification: ", no_aphia$verbatimIdentification
-  )
+  print(paste0(nrow(no_aphia), " records missing AphiaIDs. Check if manual editing is required."))
+  print(paste("Specimen number: ", no_aphia$occurrenceID))
+  print(paste("Verbatim Identification: ", no_aphia$verbatimIdentification))
 } else {
   message("No rows missing AphiaIDs")
 }
 
 #' Determine if manual identification entry is necessary -
 #' may need to just remove the missing rows missing AphiaIds if cannot determine specimen identity
-
 # remove all samples without AphiaIds
-occurrence_samples <- occurrence_samples |>
-  filter(!is.na(AphiaID)) |>
+# occurrence_samples_aphia <- occurrence_samples_aphia |>
+#   filter(!is.na(AphiaID))
+
+#' Check for duplicate occurrence IDs
+duplicates <- occurrence_samples_aphia |>
+  group_by(occurrenceID) |>
+  filter(n() > 1) |>
+  ungroup()
+# #' if there are duplicated rows, figure out why there are duplicates
+#' create a dataframe that shows which columns are inconcistent across the duplicate occurrenceIDs
+if (nrow(duplicates > 0)) {
+  # build a dataframe to test where the inconcistencies are
+  test <- duplicates |>
+    group_by(occurrenceID) |>
+    summarise(across(everything(), ~ n_distinct(.) > 1)) |>
+    ungroup() |>
+    pivot_longer(
+      cols = -occurrenceID,
+      names_to = "column_name",
+      values_to = "is_inconcistent"
+    ) |>
+    filter(is_inconcistent == TRUE)
+
+  #' first double check to see how many rows the original dataframe has
+  (a <- nrow(occurrence_samples_aphia))
+  #' then check how many duplicates there are
+  (b <- nrow(duplicates))
+  # keep only unique rows
+  print((paste0("expected number of rows without duplicates: ", a - (b / 2))))
+
+  print("removing duplicated rows")
+  occurrence_samples_aphia <- occurrence_samples_aphia |>
+    unique()
+  # check that your occurrence_annotations dataframe still has the expected number of rows once duplicates have been removed
+  print(paste0("number of rows in dataframe after duplicates removed: ", nrow(occurrence_samples_aphia)))
+} else {
+  print("No duplicate occurrenceIDs")
+}
+
+# rename columns to fit the occurrence_annotations dataframe
+occurrence_samples_aphia <- occurrence_samples_aphia |>
   # rename any remaining columns to conform to DarwinCore format
   rename(c(
     scientificNameID = lsid,
@@ -626,14 +690,31 @@ occurrence_samples <- occurrence_samples |>
     infraspecificEpithet = NA,
     specificEpithet = NA,
     relatedResourceType = "PreservedSpecimen"
+  ) |>
+  # add more context to the verbatimSpecimenID to provide details on type of specimen collected
+  mutate(
+    Specimen.Type = case_when(
+      Specimen.Type == "WAT" ~ "Water sample for eDNA analysis",
+      Specimen.Type == "BIO" ~ "Biological sample",
+      Specimen.Type == "GEO" ~ "Geological sample",
+      TRUE ~ Specimen.Type
+    )
+  ) |>
+  unite(
+    col = verbatimIdentification,
+    Specimen.Type, verbatimIdentification,
+    sep = " | ",
+    na.rm = TRUE,
+    remove = FALSE
   )
 
+
 # Create the sample EMOF table before removing relevant fields
-emof_sample_records <- occurrence_samples
+emof_sample_records <- occurrence_samples_aphia
 
 # remove unnecessary columns from the occurrence annotations dataset
 # keep only fields of interest - should match exactly with the order of occurrence_annotaitons dataframe
-occurrence_samples <- occurrence_samples |>
+occurrence_samples_aphia <- occurrence_samples_aphia |>
   select(c(
     "occurrenceID",
     "eventID",
@@ -689,16 +770,26 @@ occurrence_samples <- occurrence_samples |>
     "relatedResourceType"
   ))
 
+### NEED TO DO: #####
+#' Need to determine if we should be including water samples in the occurrence dataset
+#' there will be no IDs associated with them, but they provide context for the eDNA datasets being contributed
+#' currently the occurrence dataset only include organisms with an AphiaID, so does not include main water or geology samples
+#' The event table should not contain any floating eventIDs that are unmatched in the occurrence table
+#' so we should not include any CTD data in the event table.
 
-# combine the occurrence
-occurrence <- rbind(occurrence_annotations, occurrence_samples)
+### COMBINE OCCURRENCE DATASETS ####
+occurrence <- rbind(occurrence_annotations, occurrence_samples_aphia)
 
-
-### FOR NAUTILUS (INCOMPLETE) #####
-#' ~NOTE:
-#' we do not have a list of Nautilus samples like we do for SODA.
-#' We will either need to omit sample records from submissions
-#' or see if there is a list of samples taken we can have access to
+#' check to make sure every occurrenceID is unique
+duplicates <- occurrence |>
+  group_by(occurrenceID) |>
+  filter(n() > 1) |>
+  ungroup()
+if (nrow(duplicates) > 0) {
+  print(duplicates)
+} else {
+  print("No duplicate occurrenceIDs")
+}
 
 
 ## BUILD EVENT TABLE ####
@@ -714,7 +805,8 @@ occurrence <- rbind(occurrence_annotations, occurrence_samples)
 #' For Nautilus cruises, some values will need to be changed
 
 event <- cruise_log |>
-  filter(PlatformType %in% c("ROV", "Rosette")) |> # only keep ROV dive and Rosette categories for now - determine if additional deployment types are desired and include those at a later date
+  filter(PlatformType == "ROV") |> # only keep ROV events because we do not have archived sample logs for eDNA data
+  # filter(PlatformType %in% c("ROV", "Rosette")) |> # only keep ROV dive and Rosette categories for now - determine if additional deployment types are desired and include those at a later date
   rename(
     parentEventID = CruiseID,
     eventDate = Deployment_UTC_DateTime,
@@ -770,21 +862,18 @@ duplicates <- event |>
   ungroup()
 if (nrow(duplicates) > 0) {
   print(duplicates)
-  nrow(duplicates)
+  print(paste0("number duplicate rows: ", nrow(duplicates)))
+  print(paste0("expected number of rows in dataframe once duplicates removed: ", nrow(event) - (nrow(duplicates) / 2)))
+  print("Removing duplicate rows")
+
+  event <- event |>
+    unique()
+
+  print(paste0("number of rows after duplicates removed: ", nrow(event)))
 } else {
   print("No duplicate rows")
 }
 
-#' if there are duplicated rows, remove them
-#' first double check to see how many rows the original dataframe has
-nrow(event)
-#' then check how many duplicates there are
-nrow(duplicates)
-# keep only unique rows
-event <- event |>
-  unique()
-# check that your occurrence_annotations dataframe still has the expected number of rows once duplicates have been removed
-nrow(event)
 
 #' check to make sure the eventIDs are not duplicated
 duplicateIDs <- event |>
@@ -837,22 +926,22 @@ emof_annotation <- annotation_import |>
   mutate(across(everything(), as.character)) |>
   pivot_longer(Vessel:Oxygen, names_to = "measurementType", values_to = "measurementValue") |>
   mutate(measurementType = str_replace(measurementType, "SamplingEquipment", "Platform type")) |>
-  mutate(measurementType = str_replace(measurementType, "VehicleName", "Platform Name")) |>
+  mutate(measurementType = str_replace(measurementType, "VehicleName", "Platform name")) |>
   mutate(measurementType = str_replace(measurementType, "Temperature", "temperature")) |>
   mutate(measurementType = str_replace(measurementType, "Salinity", "salinity")) |>
-  mutate(measurementType = str_replace(measurementType, "Oxygen", "oxygenConcentration")) |>
+  mutate(measurementType = str_replace(measurementType, "Oxygen", "oxygen concentration")) |>
   mutate(
     measurementUnit = case_when(
       measurementType == "temperature" ~ "degrees celcius",
       measurementType == "salinity" ~ "PSU",
-      measurementType == "oxygenConcentration" ~ "ml/L"
+      measurementType == "oxygen concentration" ~ "ml/L"
     ),
     measurementTypeID = case_when(
       measurementType == "Vessel" ~ "https://vocab.nerc.ac.uk/collection/C17/current/334A/",
       measurementType == "Platform type" ~ "https://vocab.nerc.ac.uk/collection/L06/current/20/ | https://mmisw.org/ont/ioos/platform/submersible",
       measurementType == "temperature" ~ "https://vocab.nerc.ac.uk/collection/P01/current/TEMPCU01/ | https://vocab.nerc.ac.uk/collection/P06/current/UPAA/",
       measurementType == "salinity" ~ "https://vocab.nerc.ac.uk/collection/P01/current/ODSDM021/ | https://vocab.nerc.ac.uk/collection/P06/current/",
-      measurementType == "oxygenConcentration" ~ "https://vocab.nerc.ac.uk/collection/P01/current/DOXYUCKG/ | https://vocab.nerc.ac.uk/collection/P06/current/UMLL/"
+      measurementType == "oxygen concentration" ~ "https://vocab.nerc.ac.uk/collection/P01/current/DOXYUCKG/ | https://vocab.nerc.ac.uk/collection/P06/current/UMLL/"
     ),
     measurementValue = str_replace(measurementValue, "Okeanos Explorer", "NOAA Ship Okeanos Explorer"),
     measurementValue = str_replace(measurementValue, "Nautilus", "Exploration Vessel Nautilus"),
@@ -877,22 +966,22 @@ emof_samples <- emof_sample_records |>
   mutate(across(everything(), as.character)) |>
   pivot_longer(Vessel:Dissolved.Oxygen..mg.l., names_to = "measurementType", values_to = "measurementValue") |>
   mutate(measurementType = str_replace(measurementType, "SamplingEquipment", "Platform type")) |>
-  mutate(measurementType = str_replace(measurementType, "VehicleName", "Platform Name")) |>
+  mutate(measurementType = str_replace(measurementType, "VehicleName", "Platform name")) |>
   mutate(measurementType = str_replace(measurementType, "Temperature..Deg.C.", "temperature")) |>
-  mutate(measurementType = str_replace(measurementType, "Salinity..psu", "salinity")) |>
-  mutate(measurementType = str_replace(measurementType, "Dissolved.Oxygen..mg.l.", "oxygenConcentration")) |>
+  mutate(measurementType = str_replace(measurementType, "Salinity..psu.", "salinity")) |>
+  mutate(measurementType = str_replace(measurementType, "Dissolved.Oxygen..mg.l.", "oxygen concentration")) |>
   mutate(
     measurementUnit = case_when(
       measurementType == "temperature" ~ "degrees celcius",
       measurementType == "salinity" ~ "PSU",
-      measurementType == "oxygenConcentration" ~ "mg/L"
+      measurementType == "oxygen concentration" ~ "mg/L"
     ),
     measurementTypeID = case_when(
       measurementType == "Vessel" ~ "https://vocab.nerc.ac.uk/collection/C17/current/334A/",
       measurementType == "Platform type" ~ "https://vocab.nerc.ac.uk/collection/L06/current/20/ | https://mmisw.org/ont/ioos/platform/submersible",
       measurementType == "temperature" ~ "https://vocab.nerc.ac.uk/collection/P01/current/TEMPCU01/ | https://vocab.nerc.ac.uk/collection/P06/current/UPAA/",
       measurementType == "salinity" ~ "https://vocab.nerc.ac.uk/collection/P01/current/ODSDM021/ | https://vocab.nerc.ac.uk/collection/P06/current/",
-      measurementType == "oxygenConcentration" ~ "https://vocab.nerc.ac.uk/collection/P01/current/DOXYUCKG/ | https://vocab.nerc.ac.uk/collection/P06/current/UMGL/"
+      measurementType == "oxygen concentration" ~ "https://vocab.nerc.ac.uk/collection/P01/current/DOXYUCKG/ | https://vocab.nerc.ac.uk/collection/P06/current/UMGL/"
     ),
     measurementValue = str_replace(measurementValue, "Okeanos Explorer", "NOAA Ship Okeanos Explorer"),
     measurementValue = str_replace(measurementValue, "ROV", "submersible"),
@@ -927,11 +1016,18 @@ emof_event <- cruise_log |>
   relocate(measurementTypeID, .after = last_col()) |>
   relocate(occurrenceID, .before = eventID)
 
-#### COMBINE ANNOTATION, SAMPLE AND EVENT EMOFS ####
+### COMBINE ANNOTATION, SAMPLE AND EVENT EMOFS ####
 
 emof <- rbind(emof_annotation, emof_event, emof_samples)
 
-### EXPORT DATAFRAMES ####
+# double check for errors or inconcistancies
+unique(emof$measurementType)
+unique(emof$eventID)
+unique(emof$parentEventID)
+unique(emof$measurementUnit)
+unique(emof$measurementTypeID)
+
+## EXPORT DATAFRAMES ####
 
 # Create a directory
 dir.create(paste0(dir, "/Exports/OBIS"))
