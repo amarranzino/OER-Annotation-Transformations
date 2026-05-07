@@ -3,6 +3,10 @@
 ## Started on: 20250818
 ## Purpose: Transforming DARC annotation .txt file into format for ingestion for the Benthic Animal Guide
 
+
+#' clean working environment
+rm(list = ls())
+
 #### Set Working Directory ####
 ## Working Directory should call location where DARC .txt files are stored on computer
 ## All .txt files need to conform to the following naming convention: Expedition number + "_DARC_Annotations_BAG.txt"
@@ -26,7 +30,7 @@ library("worrms")
 # set standard name to refer to your data (e.g., the expedition number)
 
 data_name <- "NA167"
-
+# need to still check back for NA176, NA168, NA163, NA165, NA156, NA154, NA137, NA135
 
 # change this based on where expedition occurred.
 # Use either "Pacific", "Atlantic", or "Alaska". If new regions are used, work with NCEI to deterimine new names
